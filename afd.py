@@ -14,6 +14,9 @@ class AFD:
         self.n_nodes = len(Q)
         self.F = F
         self.delta = delta
+        """δ[q][a]"""
+
+        self.indexes = {name: idx for idx, name in enumerate(self.Q)}
         self.reset()
 
     def feed_one(self, c: str) -> Tuple[bool, str | None]:
