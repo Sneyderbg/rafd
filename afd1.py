@@ -1,8 +1,18 @@
+from typing import Required, TypedDict
+
+
+class AFDModelDef(TypedDict):
+    sigma: Required[list[str]]
+    Q: Required[list[str]]
+    F: Required[list[str]]
+    delta: Required[dict[str, dict[str, str]]]
+
+
 # ---------------------------------
 # ---------- Definitions ----------
 # ---------------------------------
 
-original = {
+original: AFDModelDef = {
     # Σ
     "sigma": ["0", "1"],
     "Q": ["q0", "q1", "q2", "q3"],
@@ -17,7 +27,7 @@ original = {
     },
 }
 
-two_nodes = {
+two_nodes: AFDModelDef = {
     "sigma": ["0", "1"],
     "Q": ["q0", "q1"],
     "F": ["q1"],

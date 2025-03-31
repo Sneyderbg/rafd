@@ -1,11 +1,12 @@
 from math import atan2, cos, degrees, pi, radians, sin
 from typing import Tuple, TypedDict
-from utils import Vec2
+import config as cfg
 
 import pyray as pr
 
 import afd1
 from afd import AFD
+from utils.vec2 import Vec2
 
 
 class Node(TypedDict):
@@ -14,11 +15,6 @@ class Node(TypedDict):
     is_target: bool
 
 
-FONT_SIZE = 24
-SIZE = (1280, 720)
-FPS = 100
-BACKGROUND_COLOR = pr.RAYWHITE
-
 # -------------------------
 # -------- GLOBALS --------
 # -------------------------
@@ -26,7 +22,6 @@ BACKGROUND_COLOR = pr.RAYWHITE
 bg_texture = pr.Texture()
 bg_frag_shader = pr.Shader()
 
-font_path = "./fonts/CodeSquaredRegular-AYRg.ttf"
 font = pr.get_font_default()
 
 show_help = False
@@ -37,23 +32,8 @@ Enter      - Start typing a new input for the afd
 Esc        - Cancel typing
 Left click - Drag nodes
 """
-
-# edge style
-PADDING_FROM_NODE = 10
-SEP_FACTOR = 20
-TRIANGLE_SIZE = 20
-THICKNESS = 2
-EDGE_TAG_SCALE = 0.6
-TAG_SEPARATION = 20
-
 dragging_node = False
 mouse_over_node = None
-
-edge_force = 5.0
-node_repulsion = 2e6
-deccel = 4.0
-force_length_start = 4
-"from when to apply the respective forces in max_r units"
 
 typing_str = False
 feeding_str = ""
@@ -66,17 +46,18 @@ feeding_finished = False
 live_mode = pr.ffi.new("bool *", False)  # TODO: implement: feed while typing
 
 msg = None
+msg_timer = 0
 
 
-def init():
+def init(afd_model: afd1.AFDModelDef):
     global running, camera2D, nodes, automata, n, font, max_r, name_lens
 
     # setup automata
     automata = AFD(
-        afd1.original["sigma"],
-        afd1.original["Q"],
-        afd1.original["F"],
-        afd1.original["delta"],
+        afd_model["sigma"],
+        afd_model["Q"],
+        afd_model["F"],
+        afd_model["delta"],
     )
     n = automata.n_nodes
 
@@ -92,21 +73,21 @@ def init():
     }
 
     # setup raylib
-    pr.init_window(SIZE[0], SIZE[1], "AFD")
+    pr.init_window(cfg.SIZE[0], cfg.SIZE[1], "AFD")
     pr.set_window_state(pr.ConfigFlags.FLAG_WINDOW_RESIZABLE)
-    pr.set_target_fps(FPS)
+    pr.set_target_fps(cfg.FPS)
     pr.set_exit_key(-1)
-    font = pr.load_font(font_path)
+    font = pr.load_font(cfg.FONT_PATH)
 
     global bg_texture, bg_frag_shader
-    bg = pr.gen_image_color(SIZE[0], SIZE[1], BACKGROUND_COLOR)
+    bg = pr.gen_image_color(cfg.SIZE[0], cfg.SIZE[1], cfg.BACKGROUND_COLOR)
     bg_texture = pr.load_texture_from_image(bg)
     pr.unload_image(bg)
 
-    bg_frag_shader = pr.load_shader("", "./bg.frag")
+    bg_frag_shader = pr.load_shader("", "./shaders/bg.frag")
 
     name_lens = {
-        name: pr.measure_text_ex(font, name, FONT_SIZE, 0).x for name in automata.Q
+        name: pr.measure_text_ex(font, name, cfg.FONT_SIZE, 0).x for name in automata.Q
     }
     max_r = max(name_lens.values()) + 2
 
@@ -184,10 +165,10 @@ def update_physics(dt: float):
             f = Vec2()
             dir = nodes[next_state]["pos"] - node["pos"]
             distance = dir.length()
-            edge_len = max(0, distance - max_r * (2 + force_length_start))
+            edge_len = max(0, distance - max_r * (2 + cfg.FORCE_LENGTH_START))
             dir = dir.normalize()
 
-            f = f + dir * edge_force * edge_len
+            f = f + dir * cfg.EDGE_FORCE * edge_len
             node["vel"] = node["vel"] + f * dt
             nodes[next_state]["vel"] = nodes[next_state]["vel"] - f * dt
 
@@ -196,20 +177,20 @@ def update_physics(dt: float):
         for j in range(i + 1, automata.n_nodes):
             next_node = nodes[automata.Q[j]]
             dir = next_node["pos"] - node["pos"]
-            dist = max(max_r * 2, dir.length() - max_r * (2 + force_length_start))
+            dist = max(max_r * 2, dir.length() - max_r * (2 + cfg.FORCE_LENGTH_START))
             dir = dir.normalize()
-            f = dir * node_repulsion / (dist**2)
+            f = dir * cfg.NODE_REPULSION / (dist**2)
             node["vel"] -= f * dt
             next_node["vel"] += f * dt
 
     for node in nodes.values():
         vel_dir = node["vel"].normalize()
-        node["vel"] = node["vel"] - (vel_dir * deccel)
+        node["vel"] = node["vel"] - (vel_dir * cfg.NODE_DECCEL)
         node["pos"] = node["pos"] + (node["vel"] * dt)
 
 
 def draw(dt: float):
-    pr.clear_background(BACKGROUND_COLOR)
+    pr.clear_background(cfg.BACKGROUND_COLOR)
 
     pr.set_shader_value(
         bg_frag_shader,
@@ -255,8 +236,8 @@ def draw(dt: float):
                 center_offset = center_offset.normalize() * 1.8 * max_r
                 if not self_arrow_drawed:
                     angle = degrees(atan2(center_offset.y, center_offset.x))
-                    start = (angle + 225 + PADDING_FROM_NODE) % 360
-                    end = start + 270 - 2 * PADDING_FROM_NODE
+                    start = (angle + 225 + cfg.PADDING_FROM_NODE) % 360
+                    end = start + 270 - 2 * cfg.PADDING_FROM_NODE
 
                     pr.draw_ring(
                         (node["pos"] + center_offset).v,
@@ -273,7 +254,7 @@ def draw(dt: float):
                         + center_offset
                         + max_r * Vec2(cos(end_rad), sin(end_rad))
                     )
-                    end -= TRIANGLE_SIZE
+                    end -= cfg.TRIANGLE_SIZE
                     end_rad = radians(end)
                     arrow_end_back = (
                         node["pos"]
@@ -284,14 +265,14 @@ def draw(dt: float):
                     perp = Vec2(-dir.y, dir.x)
                     pr.draw_triangle(
                         arrow_end.v,
-                        (arrow_end_back - perp * TRIANGLE_SIZE * 0.5).v,
-                        (arrow_end_back + perp * TRIANGLE_SIZE * 0.5).v,
+                        (arrow_end_back - perp * cfg.TRIANGLE_SIZE * 0.5).v,
+                        (arrow_end_back + perp * cfg.TRIANGLE_SIZE * 0.5).v,
                         edge_color,
                     )
 
                 tag_pos = (
                     node["pos"]
-                    + (2.8 * max_r + TAG_SEPARATION) * center_offset.normalize()
+                    + (2.8 * max_r + cfg.TAG_SEPARATION) * center_offset.normalize()
                 )
 
                 if not edge_tags_acc.get(tag_pos):
@@ -306,35 +287,35 @@ def draw(dt: float):
             end = nodes[next_state]["pos"]
             dir = (end - start).normalize()
 
-            padding = max_r + PADDING_FROM_NODE
+            padding = max_r + cfg.PADDING_FROM_NODE
             # draw edge arrows
             start = start + (dir * padding)
             end = end - (dir * padding)
             control_point = ((end - start) * 1 / 2) + start
             dir_perp = dir.rotate(-pi / 2)
-            control_point = control_point + (dir_perp * SEP_FACTOR)
+            control_point = control_point + (dir_perp * cfg.SEP_FACTOR)
 
-            start = start + (dir_perp * SEP_FACTOR * 0.5)
-            end = end + (dir_perp * SEP_FACTOR * 0.5)
+            start = start + (dir_perp * cfg.SEP_FACTOR * 0.5)
+            end = end + (dir_perp * cfg.SEP_FACTOR * 0.5)
 
             pr.draw_spline_bezier_quadratic(
                 [start.v, control_point.v, end.v],
                 3,
-                THICKNESS,
+                cfg.THICKNESS,
                 edge_color,
             )
 
             # draw arrows heads
             dir = (end - control_point).normalize()
-            end_back = end - (dir * TRIANGLE_SIZE)
+            end_back = end - (dir * cfg.TRIANGLE_SIZE)
             pr.draw_triangle(
                 end.v,
-                (end_back + (dir_perp * TRIANGLE_SIZE * 0.5)).v,
-                (end_back - (dir_perp * TRIANGLE_SIZE * 0.5)).v,
+                (end_back + (dir_perp * cfg.TRIANGLE_SIZE * 0.5)).v,
+                (end_back - (dir_perp * cfg.TRIANGLE_SIZE * 0.5)).v,
                 edge_color,
             )
 
-            control_point += dir_perp * TAG_SEPARATION
+            control_point += dir_perp * cfg.TAG_SEPARATION
 
             if not edge_tags_acc.get(control_point):
                 edge_tags_acc[control_point] = [input], edge_color
@@ -345,7 +326,9 @@ def draw(dt: float):
         for pos, (tags, color) in edge_tags_acc.items():
             tags_str = ",".join(tags)
             tags_size = Vec2(
-                vec=pr.measure_text_ex(font, tags_str, FONT_SIZE * EDGE_TAG_SCALE, 0)
+                vec=pr.measure_text_ex(
+                    font, tags_str, cfg.FONT_SIZE * cfg.EDGE_TAG_SCALE, 0
+                )
             )
             pr.draw_text_ex(
                 font, tags_str, (pos - tags_size / 2).v, tags_size.y, 0, color
@@ -362,9 +345,9 @@ def draw(dt: float):
             state,
             [
                 int(node["pos"].x) - name_lens[state] // 2,
-                int(node["pos"].y) - FONT_SIZE // 2,
+                int(node["pos"].y) - cfg.FONT_SIZE // 2,
             ],
-            FONT_SIZE,
+            cfg.FONT_SIZE,
             0,
             pr.BLACK,
         )
@@ -382,8 +365,8 @@ def draw(dt: float):
         pr.draw_text_ex(
             font,
             "Enter string: " + feeding_str,
-            [FONT_SIZE // 2, pr.get_render_height() - int(FONT_SIZE * 1.5)],
-            FONT_SIZE,
+            [cfg.FONT_SIZE // 2, pr.get_render_height() - int(cfg.FONT_SIZE * 1.5)],
+            cfg.FONT_SIZE,
             0,
             pr.BLACK,
         )
@@ -393,8 +376,8 @@ def draw(dt: float):
         pr.draw_text_ex(
             font,
             "Error: " + msg,
-            [FONT_SIZE // 2, pr.get_render_height() - int(FONT_SIZE * 1.5)],
-            FONT_SIZE,
+            [cfg.FONT_SIZE // 2, pr.get_render_height() - int(cfg.FONT_SIZE * 1.5)],
+            cfg.FONT_SIZE,
             0,
             pr.Color(200, 0, 0, int(min(255, 255 * msg_timer))),
         )
@@ -402,19 +385,19 @@ def draw(dt: float):
     # feeding progress
     if feeding:
         str_cursor_after = pr.measure_text_ex(
-            font, feeding_str[: feeding_idx + 1], FONT_SIZE, 0
+            font, feeding_str[: feeding_idx + 1], cfg.FONT_SIZE, 0
         ).x
         str_cursor_offset = (
-            pr.measure_text_ex(font, feeding_str[:feeding_idx], FONT_SIZE, 0).x
+            pr.measure_text_ex(font, feeding_str[:feeding_idx], cfg.FONT_SIZE, 0).x
             + str_cursor_after
         ) / 2
-        str_width = pr.measure_text_ex(font, feeding_str, FONT_SIZE, 0).x
+        str_width = pr.measure_text_ex(font, feeding_str, cfg.FONT_SIZE, 0).x
         str_pos = (pr.get_render_width() - str_width) // 2
         pr.draw_text_ex(
             font,
             feeding_str,
             [str_pos, 20],
-            FONT_SIZE,
+            cfg.FONT_SIZE,
             0,
             pr.GRAY,
         )
@@ -425,16 +408,18 @@ def draw(dt: float):
             and automata.is_valid_input(feeding_str[feeding_idx])
             else pr.RED
         )
-        pr.draw_circle_v([str_pos + str_cursor_offset, 20 + FONT_SIZE + r * 2], r, c)
+        pr.draw_circle_v(
+            [str_pos + str_cursor_offset, 20 + cfg.FONT_SIZE + r * 2], r, c
+        )
 
     elif feeding_finished:
         finished_msg = "Feed finished"
-        msg_w = pr.measure_text_ex(font, finished_msg, FONT_SIZE, 0).x
+        msg_w = pr.measure_text_ex(font, finished_msg, cfg.FONT_SIZE, 0).x
         pr.draw_text_ex(
             font,
             finished_msg,
             [(pr.get_render_width() - msg_w) // 2, 20],
-            FONT_SIZE,
+            cfg.FONT_SIZE,
             0,
             pr.BLACK,
         )
@@ -446,11 +431,14 @@ def draw(dt: float):
             font,
             hint,
             [
-                (pr.get_render_width() - pr.measure_text_ex(font, hint, FONT_SIZE, 0).x)
+                (
+                    pr.get_render_width()
+                    - pr.measure_text_ex(font, hint, cfg.FONT_SIZE, 0).x
+                )
                 // 2,
                 80,
             ],
-            FONT_SIZE,
+            cfg.FONT_SIZE,
             0,
             pr.color_alpha(pr.BLACK, help_hint_timer),
         )
@@ -460,7 +448,7 @@ def draw(dt: float):
             [0, 0, pr.get_render_width(), pr.get_render_height()],
             pr.Color(0, 0, 0, 128),
         )
-        help_size = pr.measure_text_ex(font, help_info, FONT_SIZE, 1)
+        help_size = pr.measure_text_ex(font, help_info, cfg.FONT_SIZE, 1)
         pr.draw_text_ex(
             font,
             help_info,
@@ -468,7 +456,7 @@ def draw(dt: float):
                 (pr.get_render_width() - int(help_size.x)) // 2,
                 (pr.get_render_height() - int(help_size.y)) // 2,
             ],
-            FONT_SIZE,
+            cfg.FONT_SIZE,
             0,
             pr.BLACK,
         )
@@ -547,21 +535,20 @@ def input():
         show_help = False
 
 
-# main
-if __name__ == "__main__":
+def run(afd_model: afd1.AFDModelDef = afd1.original):
     global running
     running = True
     frame_time = 0
-    FIXED_DT = 1.0 / FPS
+    fixed_dt = 1.0 / cfg.PHYSICS_FPS
 
-    init()
+    init(afd_model)
     while running and not pr.window_should_close():
         dt = pr.get_frame_time()
         frame_time += dt
 
-        while frame_time >= FIXED_DT:
-            update_physics(FIXED_DT)
-            frame_time -= FIXED_DT
+        while frame_time >= fixed_dt:
+            update_physics(fixed_dt)
+            frame_time -= fixed_dt
 
         update(dt)
         pr.begin_drawing()
