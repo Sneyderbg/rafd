@@ -1,5 +1,5 @@
-from math import pi
-from typing import TypedDict
+from math import atan2, cos, degrees, pi, radians, sin
+from typing import Tuple, TypedDict
 from utils import Vec2
 
 import pyray as pr
@@ -38,6 +38,14 @@ Esc        - Cancel typing
 Left click - Drag nodes
 """
 
+# edge style
+PADDING_FROM_NODE = 10
+SEP_FACTOR = 20
+TRIANGLE_SIZE = 20
+THICKNESS = 2
+EDGE_TAG_SCALE = 0.6
+TAG_SEPARATION = 20
+
 dragging_node = False
 mouse_over_node = None
 
@@ -48,8 +56,8 @@ force_length_start = 4
 "from when to apply the respective forces in max_r units"
 
 typing_str = False
-feeding = False
 feeding_str = ""
+feeding = False
 feeding_idx = 0
 feeding_timer = 0
 feeding_delay = 2  # secs
@@ -222,8 +230,10 @@ def draw(dt: float):
     if feeding_idx < len(feeding_str):
         next_input = feeding_str[feeding_idx]
 
+    edge_tags_acc: dict[Vec2, Tuple[list[str], pr.Color]] = {}
     for state, node in nodes.items():
         # draw edges
+        self_arrow_drawed = False
         for input in automata.sigma:
             edge_color = pr.GRAY
             if (
@@ -237,64 +247,108 @@ def draw(dt: float):
                 edge_color = pr.GREEN
 
             if next_state == state:
-                # TODO: draw self connection
+                center_offset = Vec2()
+                for other_state, other_node in nodes.items():
+                    if state != other_state:
+                        center_offset += node["pos"] - other_node["pos"]
+
+                center_offset = center_offset.normalize() * 1.8 * max_r
+                if not self_arrow_drawed:
+                    angle = degrees(atan2(center_offset.y, center_offset.x))
+                    start = (angle + 225 + PADDING_FROM_NODE) % 360
+                    end = start + 270 - 2 * PADDING_FROM_NODE
+
+                    pr.draw_ring(
+                        (node["pos"] + center_offset).v,
+                        max_r - 2,
+                        max_r,
+                        start,
+                        end,
+                        20,
+                        edge_color,
+                    )
+                    end_rad = radians(end)
+                    arrow_end = (
+                        node["pos"]
+                        + center_offset
+                        + max_r * Vec2(cos(end_rad), sin(end_rad))
+                    )
+                    end -= TRIANGLE_SIZE
+                    end_rad = radians(end)
+                    arrow_end_back = (
+                        node["pos"]
+                        + center_offset
+                        + max_r * Vec2(cos(end_rad), sin(end_rad))
+                    )
+                    dir = (arrow_end - arrow_end_back).normalize()
+                    perp = Vec2(-dir.y, dir.x)
+                    pr.draw_triangle(
+                        arrow_end.v,
+                        (arrow_end_back - perp * TRIANGLE_SIZE * 0.5).v,
+                        (arrow_end_back + perp * TRIANGLE_SIZE * 0.5).v,
+                        edge_color,
+                    )
+
+                tag_pos = (
+                    node["pos"]
+                    + (2.8 * max_r + TAG_SEPARATION) * center_offset.normalize()
+                )
+
+                if not edge_tags_acc.get(tag_pos):
+                    edge_tags_acc[tag_pos] = [input], edge_color
+                else:
+                    edge_tags_acc[tag_pos][0].append(input)
+
+                self_arrow_drawed = True
                 continue
 
             start = node["pos"]
             end = nodes[next_state]["pos"]
             dir = (end - start).normalize()
 
-            # edge style
-            padding = max_r + 10
-            sep_factor = 20
-            triangle_size = 20
-            thickness = 2
-            edge_tag_scale = 0.6
-            tag_separation = 10
-
+            padding = max_r + PADDING_FROM_NODE
             # draw edge arrows
             start = start + (dir * padding)
             end = end - (dir * padding)
             control_point = ((end - start) * 1 / 2) + start
             dir_perp = dir.rotate(-pi / 2)
-            control_point = control_point + (dir_perp * sep_factor)
+            control_point = control_point + (dir_perp * SEP_FACTOR)
 
-            start = start + (dir_perp * sep_factor * 0.5)
-            end = end + (dir_perp * sep_factor * 0.5)
+            start = start + (dir_perp * SEP_FACTOR * 0.5)
+            end = end + (dir_perp * SEP_FACTOR * 0.5)
 
             pr.draw_spline_bezier_quadratic(
                 [start.v, control_point.v, end.v],
                 3,
-                thickness,
+                THICKNESS,
                 edge_color,
             )
 
             # draw arrows heads
             dir = (end - control_point).normalize()
-            end_back = end - (dir * triangle_size)
+            end_back = end - (dir * TRIANGLE_SIZE)
             pr.draw_triangle(
                 end.v,
-                (end_back + (dir_perp * triangle_size * 0.5)).v,
-                (end_back - (dir_perp * triangle_size * 0.5)).v,
+                (end_back + (dir_perp * TRIANGLE_SIZE * 0.5)).v,
+                (end_back - (dir_perp * TRIANGLE_SIZE * 0.5)).v,
                 edge_color,
             )
 
-            control_point += dir_perp * tag_separation
+            control_point += dir_perp * TAG_SEPARATION
 
-            # draw edge tags (inputs)
-            input_w = pr.measure_text_ex(
-                font, input, int(FONT_SIZE * edge_tag_scale), 0
-            ).x
+            if not edge_tags_acc.get(control_point):
+                edge_tags_acc[control_point] = [input], edge_color
+            else:
+                edge_tags_acc[control_point][0].append(input)
+
+        # draw edge tags (inputs)
+        for pos, (tags, color) in edge_tags_acc.items():
+            tags_str = ",".join(tags)
+            tags_size = Vec2(
+                vec=pr.measure_text_ex(font, tags_str, FONT_SIZE * EDGE_TAG_SCALE, 0)
+            )
             pr.draw_text_ex(
-                font,
-                input,
-                [
-                    int(control_point.x) - input_w // 2,
-                    int(control_point.y - FONT_SIZE * edge_tag_scale / 2),
-                ],
-                int(FONT_SIZE * edge_tag_scale),
-                0,
-                edge_color,
+                font, tags_str, (pos - tags_size / 2).v, tags_size.y, 0, color
             )
 
         # draw nodes

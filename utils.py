@@ -51,6 +51,24 @@ class Vec2:
         else:
             return Vec2(self.x * other, self.y * other)
 
+    def __radd__(self, other):
+        if isinstance(other, Vec2):
+            return Vec2(self.x + other.x, self.y + other.y)
+        else:
+            return Vec2(self.x + other, self.y + other)
+
+    def __rsub__(self, other):
+        if isinstance(other, Vec2):
+            return Vec2(other.x - self.x, other.y - self.y)
+        else:
+            return Vec2(other.x - self, other.y - self)
+
+    def __rmul__(self, other):
+        if isinstance(other, Vec2):
+            return Vec2(self.x * other.x, self.y * other.y)
+        else:
+            return Vec2(self.x * other, self.y * other)
+
     def __truediv__(self, other):
         if isinstance(other, Vec2):
             return Vec2(self.x / other.x, self.y / other.y)
@@ -170,6 +188,9 @@ class Vec2:
 
     def __neg__(self):
         return Vec2(-self.x, -self.y)
+
+    def __hash__(self) -> int:
+        return hash((int(self.x), int(self.y)))
 
     def length_sqr(self):
         return self.x * self.x + self.y * self.y
