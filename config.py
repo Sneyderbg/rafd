@@ -3,7 +3,7 @@ import pyray as pr
 FONT_SIZE = 24
 SIZE = (1280, 720)
 FPS = 100
-PHYSICS_FPS = 60
+PHYSICS_FPS = 100
 BACKGROUND_COLOR = pr.RAYWHITE
 
 FONT_PATH = "./fonts/CodeSquaredRegular-AYRg.ttf"
@@ -18,7 +18,7 @@ TAG_SEPARATION = 20
 
 # physics
 EDGE_FORCE = 5.0
-NODE_REPULSION = 2e6
+NODE_REPULSION = 4e6
 NODE_DECCEL = 4.0
 FORCE_LENGTH_START = 4
 "from when to apply the respective forces in max_r units"

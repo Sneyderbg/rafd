@@ -4,7 +4,7 @@ import config as cfg
 
 import pyray as pr
 
-import afd1
+import definitions
 from afd import AFD
 from utils.vec2 import Vec2
 
@@ -49,7 +49,7 @@ msg = None
 msg_timer = 0
 
 
-def init(afd_model: afd1.AFDModelDef):
+def init(afd_model: definitions.AFDModelDef):
     global running, camera2D, nodes, automata, n, font, max_r, name_lens
 
     # setup automata
@@ -535,7 +535,7 @@ def input():
         show_help = False
 
 
-def run(afd_model: afd1.AFDModelDef = afd1.original):
+def run(afd_model: definitions.AFDModelDef = definitions.original):
     global running
     running = True
     frame_time = 0
