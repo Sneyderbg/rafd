@@ -27,23 +27,24 @@ font = pr.get_font_default()
 show_help = False
 help_hint_timer = 4  # secs
 help_info = """
-H          - Show this help
-Enter      - Start typing a new input for the afd
-Esc        - Cancel typing
-Left click - Drag nodes
+H            - Show this help
+Enter        - Start typing a new input for the afd
+Ctrl + Enter - Start typing in live mode (feed as you type)
+Esc          - Cancel typing
+Left click   - Drag nodes
 """
 dragging_node = False
 mouse_over_node = None
 
 typing_str = False
+live_mode = False
+"""Feed as typing new chars"""
 feeding_str = ""
 feeding = False
 feeding_idx = 0
 feeding_timer = 0
-feeding_delay = 2  # secs
 feeding_finished = False
 
-live_mode = pr.ffi.new("bool *", False)  # TODO: implement: feed while typing
 
 msg = None
 msg_timer = 0
@@ -113,8 +114,8 @@ def update(dt: float):
         if feeding_idx < len(feeding_str):
             feeding_timer += dt
 
-            if feeding_timer >= feeding_delay:
-                feeding_timer -= feeding_delay
+            if feeding_timer >= cfg.FEEDING_DELAY:
+                feeding_timer -= cfg.FEEDING_DELAY
                 _, err = automata.feed_one(feeding_str[feeding_idx])
 
                 # abort and notify
@@ -288,6 +289,7 @@ def draw(dt: float):
             dir = (end - start).normalize()
 
             padding = max_r + cfg.PADDING_FROM_NODE
+
             # draw edge arrows
             start = start + (dir * padding)
             end = end - (dir * padding)
@@ -335,9 +337,18 @@ def draw(dt: float):
             )
 
         # draw nodes
-        active = automata.current_state == state
-        node_color = pr.color_brightness(pr.BLUE if active else pr.GRAY, 0.6)
-        node_color = pr.GREEN if active and node["is_target"] else node_color
+        current = automata.current_state == state
+        previous = automata.previous_state == state
+        if current and node["is_target"]:
+            node_color = pr.GREEN
+        elif current:
+            node_color = (
+                pr.color_brightness(pr.BLUE, 0.6) if not feeding_finished else pr.RED
+            )
+        elif previous:
+            node_color = pr.color_brightness(pr.BROWN, 0.4)
+        else:
+            node_color = pr.Color(200, 200, 200, 255)
 
         pr.draw_circle_v(node["pos"].v, max_r, node_color)
         pr.draw_text_ex(
@@ -358,13 +369,30 @@ def draw(dt: float):
     pr.end_mode_2d()
 
     # gui
-    pr.gui_check_box([10, 10, 40, 20], "Live mode", live_mode)
+
+    if live_mode:
+        pos = Vec2(20, 20)
+        r = 8
+        alpha = sin(total_frame_time * 3) ** 2
+        pr.draw_circle_v(pos.v, r, pr.color_alpha(pr.RED, alpha))
+        pr.draw_text_ex(
+            font,
+            "Live mode",
+            (pos + Vec2(r * 2, -pos.y / 2)).v,
+            cfg.FONT_SIZE,
+            0,
+            pr.BLACK,
+        )
 
     # msg and input
     if typing_str:
+        text_to_show = "Enter string: " + feeding_str
+        if live_mode:
+            text_to_show = "Type your string"
+
         pr.draw_text_ex(
             font,
-            "Enter string: " + feeding_str,
+            text_to_show,
             [cfg.FONT_SIZE // 2, pr.get_render_height() - int(cfg.FONT_SIZE * 1.5)],
             cfg.FONT_SIZE,
             0,
@@ -383,7 +411,7 @@ def draw(dt: float):
         )
 
     # feeding progress
-    if feeding:
+    if feeding or (live_mode and len(feeding_str) > 0):
         str_cursor_after = pr.measure_text_ex(
             font, feeding_str[: feeding_idx + 1], cfg.FONT_SIZE, 0
         ).x
@@ -462,11 +490,26 @@ def draw(dt: float):
         )
 
 
+def start_feeding():
+    global feeding, feeding_finished, feeding_idx
+    feeding = True
+    feeding_finished = False
+    feeding_idx = 0
+
+
+def stop_feeding():
+    global feeding, feeding_finished, feeding_idx
+    feeding = False
+    feeding_idx = 0
+    feeding_finished = False
+
+
 # TODO: move camera with middle mouse
 def input():
     global \
         running, \
         typing_str, \
+        live_mode, \
         feeding_str, \
         feeding, \
         feeding_idx, \
@@ -475,6 +518,11 @@ def input():
         mouse_over_node, \
         show_help
 
+    # quit
+    if not typing_str and pr.is_key_pressed(pr.KeyboardKey.KEY_Q):
+        running = False
+
+    # dragging
     if (
         not dragging_node
         and mouse_over_node is not None
@@ -490,44 +538,55 @@ def input():
             dragging_node = False
             mouse_over_node = None
 
-    if not typing_str and pr.is_key_pressed(pr.KeyboardKey.KEY_Q):
-        running = False
-
+    # typing
     if pr.is_key_pressed(pr.KeyboardKey.KEY_ENTER) or pr.is_key_pressed(
         pr.KeyboardKey.KEY_KP_ENTER
     ):
+        if pr.is_key_down(pr.KeyboardKey.KEY_LEFT_CONTROL) or pr.is_key_down(
+            pr.KeyboardKey.KEY_RIGHT_CONTROL
+        ):
+            live_mode = True
+
         if not typing_str:
-            typing_str = True
-            feeding = False
-            feeding_idx = 0
-            feeding_finished = False
             automata.reset()
+            if not live_mode:
+                stop_feeding()
+            typing_str = True
         else:
-            feeding = True
-            feeding_finished = False
-            feeding_idx = 0
+            if not live_mode:
+                start_feeding()
             typing_str = False
+            live_mode = False
 
     if pr.is_key_pressed(pr.KeyboardKey.KEY_ESCAPE):
-        automata.reset()
-        feeding = False
-        feeding_finished = False
-        feeding_idx = 0
-        feeding_str = ""
         if typing_str:
+            feeding_str = ""
             typing_str = False
+            live_mode = False
+        else:
+            stop_feeding()
 
     if typing_str:
         key = pr.get_char_pressed()
         while key:
             if 32 <= key <= 126:  # printable chars
                 feeding_str += chr(key)
+            if live_mode:
+                if len(feeding_str) > 1:
+                    succ, err = automata.feed_one(feeding_str[-2])
+                    print(
+                        f"fed {chr(key)}, got {succ, err}, next {automata.current_state}"
+                    )
+                feeding_idx = len(feeding_str) - 1
             key = pr.get_char_pressed()
-        if pr.is_key_pressed(pr.KeyboardKey.KEY_BACKSPACE):
-            if pr.is_key_pressed(pr.KeyboardKey.KEY_LEFT_CONTROL):
+
+        if not live_mode and pr.is_key_pressed(pr.KeyboardKey.KEY_BACKSPACE):
+            if pr.is_key_down(pr.KeyboardKey.KEY_LEFT_CONTROL):
                 feeding_str = ""
             else:
                 feeding_str = feeding_str[:-1]
+
+    # help
 
     if not show_help and not typing_str and pr.is_key_down(pr.KeyboardKey.KEY_H):
         show_help = True
@@ -536,19 +595,21 @@ def input():
 
 
 def run(afd_model: definitions.AFDModelDef = definitions.original):
-    global running
+    global running, total_frame_time
     running = True
-    frame_time = 0
+    total_frame_time = 0
+    phys_dt_acc = 0
     fixed_dt = 1.0 / cfg.PHYSICS_FPS
 
     init(afd_model)
     while running and not pr.window_should_close():
         dt = pr.get_frame_time()
-        frame_time += dt
+        total_frame_time += dt
+        phys_dt_acc += dt
 
-        while frame_time >= fixed_dt:
+        while phys_dt_acc >= fixed_dt:
             update_physics(fixed_dt)
-            frame_time -= fixed_dt
+            phys_dt_acc -= fixed_dt
 
         update(dt)
         pr.begin_drawing()

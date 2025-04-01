@@ -17,8 +17,11 @@ EDGE_TAG_SCALE = 0.6
 TAG_SEPARATION = 20
 
 # physics
-EDGE_FORCE = 5.0
+EDGE_FORCE = 10.0
 NODE_REPULSION = 4e6
-NODE_DECCEL = 4.0
+NODE_DECCEL = 8.0
 FORCE_LENGTH_START = 4
 "from when to apply the respective forces in max_r units"
+
+# feeding
+FEEDING_DELAY = 0.5  # secs

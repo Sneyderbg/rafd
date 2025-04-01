@@ -23,6 +23,7 @@ class AFD:
         if not self.is_valid_input(c):
             return False, f"'{c}' is not in sigma"
         else:
+            self.previous_state = self.current_state
             self.current_state = self.delta[self.current_state][c]
             return self.current_state in self.F, None
 
@@ -37,6 +38,7 @@ class AFD:
 
     def reset(self):
         self.current_state = self.Q[0]
+        self.previous_state = None
 
     def is_current_success(self):
         return self.current_state in self.F
