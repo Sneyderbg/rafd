@@ -195,10 +195,23 @@ def draw(dt: float):
 
     pr.set_shader_value(
         bg_frag_shader,
-        pr.rl_get_location_uniform(bg_frag_shader.id, "resolution"),
+        pr.get_shader_location(bg_frag_shader, "resolution"),
         pr.Vector2(pr.get_render_width(), pr.get_render_height()),
         pr.ShaderUniformDataType.SHADER_UNIFORM_VEC2,
     )
+    pr.set_shader_value(
+        bg_frag_shader,
+        pr.get_shader_location(bg_frag_shader, "camTarget"),
+        pr.Vector2(camera2D.target.x, -camera2D.target.y),
+        pr.ShaderUniformDataType.SHADER_UNIFORM_VEC2,
+    )
+    pr.set_shader_value(
+        bg_frag_shader,
+        pr.get_shader_location(bg_frag_shader, "camZoom"),
+        pr.ffi.new("float *", camera2D.zoom),
+        pr.ShaderUniformDataType.SHADER_UNIFORM_FLOAT,
+    )
+
     pr.begin_shader_mode(bg_frag_shader)
     pr.draw_texture(bg_texture, 0, 0, pr.WHITE)
     pr.end_shader_mode()
@@ -504,7 +517,6 @@ def stop_feeding():
     feeding_finished = False
 
 
-# TODO: move camera with middle mouse
 def input():
     global \
         running, \
@@ -537,6 +549,19 @@ def input():
         if pr.is_mouse_button_up(pr.MouseButton.MOUSE_BUTTON_LEFT):
             dragging_node = False
             mouse_over_node = None
+
+    # move camera
+    if pr.is_mouse_button_down(pr.MouseButton.MOUSE_BUTTON_MIDDLE):
+        camera2D.target = pr.vector2_subtract(
+            camera2D.target, pr.vector2_scale(pr.get_mouse_delta(), 1.0 / camera2D.zoom)
+        )
+
+    # zoom
+    wheel = pr.get_mouse_wheel_move()
+    if wheel > 0:
+        camera2D.zoom *= cfg.CAM_ZOOM_FACTOR
+    elif wheel < 0:
+        camera2D.zoom /= cfg.CAM_ZOOM_FACTOR
 
     # typing
     if pr.is_key_pressed(pr.KeyboardKey.KEY_ENTER) or pr.is_key_pressed(

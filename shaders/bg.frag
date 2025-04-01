@@ -6,12 +6,13 @@ in vec4 fragColor;
 out vec4 color;
 
 uniform vec2 resolution;
-uniform vec2 cam_target;
+uniform vec2 camTarget;
+uniform float camZoom;
 
 void main() {
-    vec2 uv = gl_FragCoord.xy / resolution.x;
+    vec2 uv = ((gl_FragCoord.xy - resolution / 2.) / camZoom + camTarget) / resolution.x;
 
-    uv *= 20.;
+    uv *= 10.;
     vec2 fr = fract(uv);
 
     vec2 sm = smoothstep(-.1, .1, fr + .05);

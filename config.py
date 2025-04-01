@@ -5,6 +5,7 @@ SIZE = (1280, 720)
 FPS = 100
 PHYSICS_FPS = 100
 BACKGROUND_COLOR = pr.RAYWHITE
+CAM_ZOOM_FACTOR = 1.2
 
 FONT_PATH = "./fonts/CodeSquaredRegular-AYRg.ttf"
 
