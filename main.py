@@ -7,17 +7,18 @@ from random import randint
 
 USAGE = """
 Usage:
-    <program> cli - run automata an type throught console
-    <program> vis - run visualizer
+    <program> cli <num_automata> - run automata and type through console
+    <program> vis <num_automata> - run visualizer
+    ** num_automata accept 1 - original automata or 2 - modified automata
 """
 
 
 def run_tests():
     automata = AFD(
-        definitions.original["sigma"],
-        definitions.original["Q"],
-        definitions.original["F"],
-        definitions.original["delta"],
+        definitions.modified["sigma"],
+        definitions.modified["Q"],
+        definitions.modified["F"],
+        definitions.modified["delta"],
     )
 
     def rand_char():
@@ -41,13 +42,26 @@ def run_tests():
     print("all good")
 
 
-def run_cli():
-    automata = AFD(
-        definitions.original["sigma"],
-        definitions.original["Q"],
-        definitions.original["F"],
-        definitions.original["delta"],
-    )
+def run_cli(num_automata: int):
+
+    if num_automata == 0:
+        automata = AFD(
+            definitions.original["sigma"],
+            definitions.original["Q"],
+            definitions.original["F"],
+            definitions.original["delta"],
+        )
+    elif num_automata == 1:
+        automata = AFD(
+            definitions.modified["sigma"],
+            definitions.modified["Q"],
+            definitions.modified["F"],
+            definitions.modified["delta"],
+        )
+    else:
+        print(f'the argum = {num_automata }'," isn't a correct automata")
+        exit(1)
+
 
     print("Type a string to evaluate with the automata")
     input_str = input("string: ")
@@ -59,14 +73,28 @@ def run_cli():
             print(f'the string is {"ACCEPTED" if succ else "REJECTED"}')
         input_str = input("string: ")
 
+def run_vis(num_automata: int):
+
+    if num_automata == 0:
+        run(definitions.original)
+    elif num_automata == 1:
+        run(definitions.modified)
+    else:
+        print(f'the argum = {num_automata}', " isn't a correct automata")
+        exit(1)
+
+
 
 # main
 if __name__ == "__main__":
-    if len(sys.argv) == 2:
+    if len(sys.argv) == 2 or len(sys.argv) == 3:
+        if len(sys.argv) == 3:
+            num_automata = int(sys.argv[2])
+
         if sys.argv[1] == "cli":
-            run_cli()
+            run_cli(num_automata)
         elif sys.argv[1] == "vis":
-            run()
+            run_vis(num_automata)
         elif sys.argv[1] == "test":
             run_tests()
         else:

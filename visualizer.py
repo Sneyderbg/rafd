@@ -356,7 +356,7 @@ def draw(dt: float):
             node_color = pr.GREEN
         elif current:
             node_color = (
-                pr.color_brightness(pr.BLUE, 0.6) if not feeding_finished else pr.RED
+                pr.color_brightness(pr.RED , 0.6) if not feeding_finished else pr.RED
             )
         elif previous:
             node_color = pr.color_brightness(pr.BROWN, 0.4)
@@ -580,8 +580,12 @@ def input():
         else:
             if not live_mode:
                 start_feeding()
+            elif len(feeding_str) > 0:
+                automata.feed_one(feeding_str[-1])
+                feeding_str = ""
             typing_str = False
             live_mode = False
+
 
     if pr.is_key_pressed(pr.KeyboardKey.KEY_ESCAPE):
         if typing_str:
@@ -599,9 +603,6 @@ def input():
             if live_mode:
                 if len(feeding_str) > 1:
                     succ, err = automata.feed_one(feeding_str[-2])
-                    print(
-                        f"fed {chr(key)}, got {succ, err}, next {automata.current_state}"
-                    )
                 feeding_idx = len(feeding_str) - 1
             key = pr.get_char_pressed()
 

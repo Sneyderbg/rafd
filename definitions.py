@@ -43,12 +43,4 @@ modified: AFDModelDef = {
     },
 }
 
-two_nodes: AFDModelDef = {
-    "sigma": ["0", "1"],
-    "Q": ["q0", "q1"],
-    "F": ["q1"],
-    "delta": {
-        "q0": {"0": "q0", "1": "q1"},
-        "q1": {"0": "q1", "1": "q1"},
-    },
-}
+
