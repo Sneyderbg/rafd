@@ -1,12 +1,14 @@
 #include "afd.h"
 #include "utils.h"
 #include <stdbool.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
 bool AFD_new(AFD *afd, char *sigma, int sigma_len, char **Q, int Q_len,
              char **F, int F_len, char ***delta) {
   TODO("implement");
+  TODO("also create connections");
 }
 
 bool AFD_isValidState(AFD *afd, char *state) {
@@ -38,8 +40,25 @@ int AFD_getInputIdx(AFD *afd, char input) {
   return -1;
 }
 
+// returns NULL if input is not valid
+char *AFD_getNextState(AFD *afd, char input) {
+  int inputIdx = AFD_getInputIdx(afd, input);
+  if (inputIdx == -1)
+    return NULL;
+
+  int stateIdx = AFD_getStateIdx(afd, afd->currentState);
+
+  return afd->delta[stateIdx][inputIdx];
+}
+
+char *AFD_getConnection(AFD *afd, int state0Idx, int state1Idx) {
+
+  // basically connections is a linear matrix
+  return afd->connections[state0Idx * afd->Q.len + state1Idx];
+}
+
 bool AFD_isCurrentSuccess(AFD *afd) {
-  return AFD_isStateSuccess(afd, afd->current_state);
+  return AFD_isStateSuccess(afd, afd->currentState);
 }
 
 bool AFD_isStateSuccess(AFD *afd, char *state) {
@@ -53,15 +72,29 @@ bool AFD_isStateSuccess(AFD *afd, char *state) {
   return false;
 }
 
-// returns false if input is not in sigma, true otherwise
-bool AFD_feedOne(AFD *afd, char input) {
-  int inputIdx = AFD_getInputIdx(afd, input);
-  if (inputIdx == -1)
+bool AFD_isCurrent(AFD *afd, char *state) {
+  if (afd->currentState == NULL)
     return false;
 
-  int stateIdx = AFD_getStateIdx(afd, afd->current_state);
-  afd->previous_state = afd->current_state;
-  afd->current_state = afd->delta[stateIdx][inputIdx];
+  return strcmp(afd->currentState, state) == 0;
+}
+bool AFD_isPrevious(AFD *afd, char *state) {
+
+  if (afd->previousState == NULL)
+    return false;
+
+  return strcmp(afd->previousState, state) == 0;
+}
+
+// returns false if input is not in sigma, true otherwise
+bool AFD_feedOne(AFD *afd, char input) {
+  char *next_state = AFD_getNextState(afd, input);
+  if (next_state == NULL) {
+    false;
+  }
+
+  afd->previousState = afd->currentState;
+  afd->currentState = next_state;
 
   return true;
 }
@@ -86,22 +119,23 @@ int AFD_feed(AFD *afd, char *string, bool skipErrors) {
 }
 
 void AFD_reset(AFD *afd) {
-  afd->current_state = afd->q0;
-  afd->previous_state = NULL;
+  afd->previousState = NULL;
+  afd->currentState = afd->q0;
 }
 
 void AFD_free(AFD *afd) {
+  if (afd->connections != NULL) {
+    for (int pos = 0; pos < afd->Q.len * afd->Q.len; pos++) {
+      free(afd->connections[pos]);
+    }
+    free(afd->connections);
+  }
+
   if (afd->delta != NULL) {
     for (int row = 0; row < afd->Q.len; row++) {
-      for (int col = 0; col < afd->sigma.len; col++) {
-        free(afd->delta[row][col]);
-      }
       free(afd->delta[row]);
     }
     free(afd->delta);
-  }
-  if (afd->q0 != NULL) {
-    free(afd->q0);
   }
 
   DA_free(afd->F);
@@ -111,7 +145,6 @@ void AFD_free(AFD *afd) {
 }
 
 #define MAX_LINE_LENGTH 1024
-
 AFD *AFD_parse(const char *filename) {
   FILE *fileDef = NULL;
   fopen_s(&fileDef, filename, "r");
@@ -155,42 +188,70 @@ AFD *AFD_parse(const char *filename) {
       } else {
 
         // once Q is defined all tokens must be valid states of Q
-        if (notEmptyLineNumber > 2 && !AFD_isValidState(afd, token)) {
+        int stateIdx = AFD_getStateIdx(afd, token);
+        if (notEmptyLineNumber > 2 && stateIdx == -1) {
+          fprintf(stderr, "ERROR: %s not a valid state\n", token);
           AFD_free(afd);
           fclose(fileDef);
           exit(1);
         }
 
-        char *tokenCpy = malloc(strlen(token) * sizeof(char));
-        strcpy(tokenCpy, token);
+        char *stateToken;
+        if (notEmptyLineNumber > 2) {
+          stateToken = afd->Q.items[stateIdx];
+        } else {
+          stateToken = malloc(strlen(token) * sizeof(char));
+          strcpy(stateToken, token);
+        }
 
         switch (notEmptyLineNumber) {
         case 2: // Q
-          DA_append(afd->Q, tokenCpy);
+          DA_append(afd->Q, stateToken);
           break;
         case 3: // q_0
-          afd->q0 = tokenCpy;
+          afd->q0 = stateToken;
           break;
         case 4: // F
 
-          DA_append(afd->F, tokenCpy);
+          DA_append(afd->F, stateToken);
           break;
         default: // delta 5 -> 5+len(Q)
+          // initialize delta and connections
           if (afd->delta == NULL) {
-            afd->delta = malloc(afd->Q.len * sizeof(char *));
-            for (int row = 0; row < afd->Q.len; row++) {
+            size_t numStates = afd->Q.len;
+            afd->delta = malloc(numStates * sizeof(char *));
+            for (int row = 0; row < numStates; row++) {
               afd->delta[row] = malloc(afd->sigma.len * sizeof(char *));
+            }
+
+            afd->connections = malloc(numStates * numStates * sizeof(char *));
+            for (int pos = 0; pos < numStates * numStates; pos++) {
+              afd->connections[pos] =
+                  calloc((afd->sigma.len + 1), sizeof(char));
             }
           }
 
           int qIndex = notEmptyLineNumber - 5;
-          if (qIndex < afd->Q.len && tokenIdx < afd->sigma.len) {
-            afd->delta[qIndex][tokenIdx] = tokenCpy;
+          int inputIdx = tokenIdx;
+          if (qIndex < afd->Q.len && inputIdx < afd->sigma.len) {
+            int nextStateIdx = AFD_getStateIdx(afd, stateToken);
+            if (nextStateIdx == -1) {
+              fprintf(stderr, "ERROR: this should not happen");
+              AFD_free(afd);
+              fclose(fileDef);
+              exit(2);
+            }
+
+            afd->delta[qIndex][inputIdx] = stateToken;
+            char *inputs = afd->connections[qIndex * afd->Q.len + nextStateIdx];
+            char *inputsEndPtr = strchr(inputs, '\0');
+            *inputsEndPtr = afd->sigma.items[inputIdx];
+
           } else {
             printf("INFO: Skipping token %d at delta definition on not empty "
                    "line %d\n",
                    tokenIdx, notEmptyLineNumber);
-            free(tokenCpy);
+            free(stateToken);
           }
           break;
         }

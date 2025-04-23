@@ -1,15 +1,21 @@
 
+RAYLIB_PATH ?= ../raylib
 OBJECTS := $(patsubst %.c,%.o,$(wildcard *.c))
+INCLUDE_DIRS := -I./ -I./include/ -I$(RAYLIB_PATH)/src
+LDFLAGS := -L$(RAYLIB_PATH)/src
+LDLIBS := -lraylib -lgdi32 -lopengl32 -lwinmm
+CFLAGS := -g -O0 -std=c99
+EXE_NAME := rafd
 
-main: $(OBJECTS) 
-	clang -g -O0 -o $@ $^
+$(EXE_NAME): $(OBJECTS) 
+	clang $(CFLAGS) -o $@ $^ $(LDFLAGS) $(LDLIBS)
 
 %.o: %.c
-	clang -g -O0 -c -o $@ $<
+	clang $(CFLAGS) $(INCLUDE_DIRS) -c -o $@ $<
 
-run: main
+run: $(EXE_NAME)
 	$^
 
 clean:
-	rm main.exe
-	rm *.o
+	-rm *.o
+	-rm $(EXE_NAME).exe

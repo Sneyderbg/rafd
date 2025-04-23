@@ -8,10 +8,13 @@ typedef struct AFD {
   DA_new(sigma, char); // only single chars
   DA_new(Q, char *);
   DA_new(F, char *);
-  char ***delta; // size -> len(Q), len(sigma)
+  char ***delta; // delta[[state]][[input]] => next_state
+
+  // conn[[state0 * len(Q) + state1]] => char[[maxlen(sigma)]] inputs
+  char **connections;
   char *q0;
-  char *current_state;
-  char *previous_state;
+  char *currentState;
+  char *previousState;
 } AFD;
 
 bool AFD_new(AFD *afd, char *sigma, int sigma_len, char **Q, int Q_len,
@@ -20,8 +23,12 @@ bool AFD_isValidState(AFD *afd, char *state);
 bool AFD_isValidInput(AFD *afd, char input);
 int AFD_getStateIdx(AFD *afd, char *state);
 int AFD_getInputIdx(AFD *afd, char input);
+char *AFD_getNextState(AFD *afd, char input);
+char *AFD_getConnection(AFD *afd, int state0Idx, int state1Idx);
 bool AFD_isCurrentSuccess(AFD *afd);
 bool AFD_isStateSuccess(AFD *afd, char *state);
+bool AFD_isCurrent(AFD *afd, char *state);
+bool AFD_isPrevious(AFD *afd, char *state);
 bool AFD_feedOne(AFD *afd, char input);
 int AFD_feed(AFD *afd, char *string, bool skipErrors);
 void AFD_reset(AFD *afd);
