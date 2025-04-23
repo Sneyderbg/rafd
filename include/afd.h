@@ -26,6 +26,7 @@ int AFD_getStateIdx(AFD *afd, char *state);
 int AFD_getInputIdx(AFD *afd, char input);
 char *AFD_getNextState(AFD *afd, char input);
 char *AFD_getConnection(AFD *afd, int state0Idx, int state1Idx);
+bool AFD_hasConnection(AFD *afd, int state0Idx, int state1Idx);
 bool AFD_isCurrentSuccess(AFD *afd);
 bool AFD_isStateSuccess(AFD *afd, char *state);
 bool AFD_isCurrent(AFD *afd, char *state);

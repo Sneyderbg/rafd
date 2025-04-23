@@ -59,6 +59,11 @@ char *AFD_getConnection(AFD *afd, int state0Idx, int state1Idx) {
   return afd->connections[state0Idx * afd->Q.len + state1Idx];
 }
 
+bool AFD_hasConnection(AFD *afd, int state0Idx, int state1Idx) {
+  char *connectionInputs = AFD_getConnection(afd, state0Idx, state1Idx);
+  return strlen(connectionInputs) > 0;
+}
+
 bool AFD_isCurrentSuccess(AFD *afd) {
   return AFD_isStateSuccess(afd, afd->currentState);
 }

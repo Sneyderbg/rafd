@@ -59,6 +59,7 @@ Camera2D camera = {0};
 Font font;
 DA_new(nameLens, float);
 float maxR = 0;
+char *inputsJoined = NULL;
 
 void init(AFD *_afd) {
   afd = _afd;
@@ -75,6 +76,7 @@ void init(AFD *_afd) {
     };
     DA_append(nodes, node);
   }
+  inputsJoined = malloc(2 * afd->sigma.len * sizeof(char));
 
   InitWindow(1280, 600, "RAFD");
   SetWindowState(FLAG_WINDOW_RESIZABLE);
@@ -135,7 +137,6 @@ void update(float dt) {
     mouseOverNode = -1;
     for (int nodeIdx = 0; nodeIdx < nodes.len; nodeIdx++) {
       Node node = nodes.items[nodeIdx];
-      char *state = node.state;
 
       if (CheckCollisionPointCircle(mouseWorldPos, node.pos, maxR)) {
         mouseOverNode = nodeIdx;
@@ -169,7 +170,6 @@ void draw(float dt) {
     bool isPrevious = AFD_isPrevious(afd, state);
 
     // draw edges
-    bool selfArrowDrawed = false;
     for (int otherStateIdx = 0; otherStateIdx < nodes.len; otherStateIdx++) {
       Node otherNode = nodes.items[otherStateIdx];
       char *edgeInputs = AFD_getConnection(afd, stateIdx, otherStateIdx);
@@ -193,12 +193,67 @@ void draw(float dt) {
 
       bool sameNode = strcmp(state, otherNode.state) == 0;
 
-      // if not same state set center as dir between nodes
-      if (sameNode && !selfArrowDrawed) {
-        // TODO: draw self arrow
-        Vector2 centerOffset = {0};
+      // draw self arrow
+      if (sameNode) {
+        Vector2 centerOffset = {0}, diff, arrowEnd, arrowEndBack, dir, perp;
+        float angle, start, end, endRad;
+
+        // accumulate inverted directions to other nodes
+        for (int i = 0; i < nodes.len; i++) {
+          if (stateIdx != i) {
+            diff = Vector2Subtract(node.pos, nodes.items[i].pos);
+            centerOffset = Vector2Add(centerOffset, diff);
+          }
+        }
+
         centerOffset = Vector2Scale(Vector2Normalize(centerOffset), 1.8 * maxR);
-      } else {
+
+        angle = atan2f(centerOffset.y, centerOffset.x) * RAD2DEG;
+        start = fmodf((angle + 225 + PADDING_FROM_NODE), 360);
+        end = start + 270 - 2 * PADDING_FROM_NODE;
+
+        DrawRing(Vector2Add(node.pos, centerOffset), maxR - 2, maxR, start, end,
+                 20, edgeColor);
+        endRad = end * DEG2RAD;
+
+        arrowEnd = Vector2Add(node.pos, centerOffset);
+        arrowEnd = Vector2Add(
+            arrowEnd, (Vector2){maxR * cosf(endRad), maxR * sinf(endRad)});
+
+        end -= TRIANGLE_SIZE;
+        endRad = (end)*DEG2RAD;
+
+        arrowEndBack = Vector2Add(node.pos, centerOffset);
+        arrowEndBack = Vector2Add(
+            arrowEndBack, (Vector2){maxR * cosf(endRad), maxR * sinf(endRad)});
+
+        dir = Vector2Normalize(Vector2Subtract(arrowEnd, arrowEndBack));
+        perp = Vector2Scale((Vector2){-dir.y, dir.x}, TRIANGLE_SIZE * .5);
+        DrawTriangle(arrowEnd, Vector2Subtract(arrowEndBack, perp),
+                     Vector2Add(arrowEndBack, perp), edgeColor);
+
+        size_t numInputs = strlen(edgeInputs);
+
+        for (size_t i = 0; i < numInputs; i++) {
+          inputsJoined[2 * i] = edgeInputs[i];
+          if (i < numInputs - 1) {
+            inputsJoined[2 * i + 1] = ',';
+          } else {
+            inputsJoined[2 * i + 1] = '\0';
+          }
+        }
+
+        Vector2 inputsPos =
+            Vector2Add(node.pos, Vector2Scale(Vector2Normalize(centerOffset),
+                                              2.8 * maxR + TAG_SEPARATION));
+        Vector2 inputsSize =
+            MeasureTextEx(font, inputsJoined, FONT_SIZE * EDGE_TAG_SCALE, 0);
+        DrawTextEx(font, inputsJoined,
+                   Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
+                   inputsSize.y, 0, edgeColor);
+
+      } else { // draw other arrows
+
         // TODO: maybe compute shader?
         Vector2 start, end, dir, dirPerp, controlPoint, endBack, endRight,
             endLeft;
@@ -235,11 +290,7 @@ void draw(float dt) {
 
         DrawTriangle(end, endRight, endLeft, edgeColor);
 
-        // TODO: avoid mallocing every frame, but consider the change of afd at
-        // runtime
         size_t numInputs = strlen(edgeInputs);
-        char *inputsJoined =
-            malloc((numInputs + (numInputs - 1)) * sizeof(char));
 
         for (size_t i = 0; i < numInputs; i++) {
           inputsJoined[2 * i] = edgeInputs[i];
@@ -255,8 +306,6 @@ void draw(float dt) {
         DrawTextEx(font, inputsJoined,
                    Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
                    inputsSize.y, 0, edgeColor);
-
-        free(inputsJoined);
       }
     }
 
@@ -291,10 +340,10 @@ void draw(float dt) {
     Vector2 pos, offset;
     float r, alpha;
     pos = (Vector2){20, 20};
-    offset = (Vector2){r * 2, -pos.y / 2};
     r = 8;
     alpha = sinf(GetTime() * 3);
     alpha *= alpha;
+    offset = (Vector2){r * 2, -pos.y / 2};
     DrawCircleV(pos, r, ColorAlpha(RED, alpha));
     DrawTextEx(font, "Live mode", Vector2Add(pos, offset), FONT_SIZE, 0, BLACK);
   }
@@ -323,7 +372,7 @@ void draw(float dt) {
   if (feeding || (liveMode && strlen(feedingStr) > 0)) {
     // TODO: measure feedingStr[: feedingIdx + 1] for offset, i will assume the
     // font is always monospace
-    int baseCharWidth, strCursorAfter, strCursorOffset, strWidth, strPos, r;
+    int baseCharWidth, strCursorOffset, strWidth, strPos, r;
     Color c;
     baseCharWidth = MeasureTextEx(font, "a", FONT_SIZE, 0).x;
     strCursorOffset = baseCharWidth * feedingIdx + baseCharWidth / 2.;
@@ -427,7 +476,7 @@ void input() {
         if (liveMode) {
           if (strlen(feedingStr) > 1) {
 
-            bool succ = AFD_feedOne(afd, feedingStr[strlen(feedingStr) - 2]);
+            AFD_feedOne(afd, feedingStr[strlen(feedingStr) - 2]);
           }
           feedingIdx = strlen(feedingStr) - 1;
         }
@@ -452,6 +501,7 @@ void input() {
 
 void close() {
   UnloadFont(font);
+  free(inputsJoined);
   DA_free(nodes);
   DA_free(nameLens);
   CloseWindow();
