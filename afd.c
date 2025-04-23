@@ -51,6 +51,8 @@ char *AFD_getNextState(AFD *afd, char input) {
   return afd->delta[stateIdx][inputIdx];
 }
 
+// returns an array of inputs associated with the connection from state0 to
+// state1 with length equal to sigma size
 char *AFD_getConnection(AFD *afd, int state0Idx, int state1Idx) {
 
   // basically connections is a linear matrix

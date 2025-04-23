@@ -13,7 +13,7 @@
 #define SEP_FACTOR 20
 #define TRIANGLE_SIZE 20
 #define THICKNESS 2
-#define EDGE_TAG_SCALE 0.6
+#define EDGE_TAG_SCALE 0.8
 #define TAG_SEPARATION 20
 
 // physics

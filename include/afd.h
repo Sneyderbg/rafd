@@ -11,6 +11,7 @@ typedef struct AFD {
   char ***delta; // delta[[state]][[input]] => next_state
 
   // conn[[state0 * len(Q) + state1]] => char[[maxlen(sigma)]] inputs
+  // Incidence matrix: it has arrays of inputs
   char **connections;
   char *q0;
   char *currentState;

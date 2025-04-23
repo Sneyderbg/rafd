@@ -5,7 +5,9 @@
 #include <math.h>
 #include <raylib.h>
 #include <raymath.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <stdlib.h>
 #include <string.h>
 
 #define MAX_FEEDING_STR_LEN 256
@@ -17,7 +19,7 @@ typedef struct Node {
   bool isTarget;
 } Node;
 
-// nodes and afd states have the same idxs
+// nodes && afd states have the same idxs
 DA_new(nodes, Node);
 
 AFD *afd = NULL;
@@ -37,17 +39,18 @@ Left click   - Drag nodes\
 ";
 bool draggingNode = false;
 int mouseOverNode = -1;
+MouseCursor currCursor = MOUSE_CURSOR_DEFAULT;
 
 bool typingStr = false;
 bool liveMode = false;
 char feedingStr[MAX_FEEDING_STR_LEN] = "";
 bool feeding = false;
 int feedingIdx = 0;
-int feedingTimer = 0;
+float feedingTimer = 0;
 bool feedingFinished = false;
 
-const char *msg = NULL;
-int msgTimer = 0;
+char msg[1024];
+float msgTimer = 0;
 
 Vector2 mousePos = {0};
 Vector2 mouseWorldPos = {0};
@@ -61,7 +64,6 @@ void init(AFD *_afd) {
   afd = _afd;
   AFD_reset(afd);
 
-  font = LoadFont("./fonts/CodeSquaredRegular-AYRg.ttf");
   for (int i = 0; i < afd->Q.len; i++) {
     char *state = afd->Q.items[i];
     Node node = {.pos = (Vector2){GetRandomValue(0, 10) * 10,
@@ -72,16 +74,20 @@ void init(AFD *_afd) {
 
     };
     DA_append(nodes, node);
-
-    DA_append(nameLens, MeasureTextEx(font, state, FONT_SIZE, 0).x);
-    maxR = fmaxf(maxR, nameLens.items[nameLens.len - 1]);
   }
-  maxR += 2;
 
   InitWindow(1280, 600, "RAFD");
   SetWindowState(FLAG_WINDOW_RESIZABLE);
   SetTargetFPS(100);
   SetExitKey(-1);
+  font = LoadFont("./fonts/CodeSquaredRegular-AYRg.ttf");
+
+  for (int i = 0; i < afd->Q.len; i++) {
+    char *state = afd->Q.items[i];
+    DA_append(nameLens, MeasureTextEx(font, state, FONT_SIZE, 0).x);
+    maxR = fmaxf(maxR, nameLens.items[nameLens.len - 1]);
+  }
+  maxR += 2;
 
   camera = (Camera2D){
       .offset = (Vector2){GetScreenWidth() / 2., GetScreenHeight() / 2.},
@@ -101,9 +107,11 @@ void update(float dt) {
         feedingTimer -= FEEDING_DELAY;
         bool validInput = AFD_feedOne(afd, feedingStr[feedingIdx]);
 
-        // abort and notify
-        if (validInput) {
-          msg = TextFormat("Input %s not in sigma", feedingStr[feedingIdx]);
+        // abort && notify
+        if (!validInput) {
+          strncpy(msg,
+                  TextFormat("Input %c not in sigma", feedingStr[feedingIdx]),
+                  1024);
           msgTimer = 4;
           feeding = false;
         }
@@ -117,12 +125,15 @@ void update(float dt) {
   }
 
   mousePos = GetMousePosition();
-  mouseWorldPos = GetScreenToWorld2D(mousePos, camera);
+  if (CheckCollisionPointRec(
+          mousePos, (Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()})) {
+    mouseWorldPos = GetScreenToWorld2D(mousePos, camera);
+  }
 
   if (!draggingNode) {
 
     mouseOverNode = -1;
-    for (int nodeIdx; nodeIdx < nodes.len; nodeIdx++) {
+    for (int nodeIdx = 0; nodeIdx < nodes.len; nodeIdx++) {
       Node node = nodes.items[nodeIdx];
       char *state = node.state;
 
@@ -131,10 +142,17 @@ void update(float dt) {
         break;
       }
     }
+    if (mouseOverNode >= 0 && currCursor == MOUSE_CURSOR_DEFAULT) {
+      currCursor = MOUSE_CURSOR_RESIZE_ALL;
+      SetMouseCursor(currCursor);
+    } else if (mouseOverNode == -1 && currCursor != MOUSE_CURSOR_DEFAULT) {
+      currCursor = MOUSE_CURSOR_DEFAULT;
+      SetMouseCursor(currCursor);
+    }
   }
 }
 
-void draw() {
+void draw(float dt) {
   ClearBackground(RAYWHITE);
 
   BeginMode2D(camera);
@@ -154,8 +172,8 @@ void draw() {
     bool selfArrowDrawed = false;
     for (int otherStateIdx = 0; otherStateIdx < nodes.len; otherStateIdx++) {
       Node otherNode = nodes.items[otherStateIdx];
-      char *inputs = AFD_getConnection(afd, stateIdx, otherStateIdx);
-      int inputsLen = strlen(inputs);
+      char *edgeInputs = AFD_getConnection(afd, stateIdx, otherStateIdx);
+      int inputsLen = strlen(edgeInputs);
 
       // skip non connected nodes
       if (inputsLen == 0) {
@@ -168,8 +186,7 @@ void draw() {
         if (feedingIdx < strlen(feedingStr) &&
             !AFD_isValidInput(afd, nextInput)) {
           edgeColor = RED;
-        } else if (strchr(inputs, nextInput) !=
-                   NULL) { // nextInput is in inputs
+        } else if (nextInput != '\0' && strchr(edgeInputs, nextInput) != NULL) {
           edgeColor = GREEN;
         }
       }
@@ -217,68 +234,31 @@ void draw() {
                                   Vector2Scale(dirPerp, TRIANGLE_SIZE * 0.5));
 
         DrawTriangle(end, endRight, endLeft, edgeColor);
+
+        // TODO: avoid mallocing every frame, but consider the change of afd at
+        // runtime
+        size_t numInputs = strlen(edgeInputs);
+        char *inputsJoined =
+            malloc((numInputs + (numInputs - 1)) * sizeof(char));
+
+        for (size_t i = 0; i < numInputs; i++) {
+          inputsJoined[2 * i] = edgeInputs[i];
+          if (i < numInputs - 1) {
+            inputsJoined[2 * i + 1] = ',';
+          }
+        }
+
+        Vector2 inputsPos =
+            Vector2Add(controlPoint, Vector2Scale(dirPerp, TAG_SEPARATION));
+        Vector2 inputsSize =
+            MeasureTextEx(font, inputsJoined, FONT_SIZE * EDGE_TAG_SCALE, 0);
+        DrawTextEx(font, inputsJoined,
+                   Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
+                   inputsSize.y, 0, edgeColor);
+
+        free(inputsJoined);
       }
     }
-    // for (int inputIdx; inputIdx < afd->sigma.len; inputIdx++) {
-    //   char input = afd->sigma.items[inputIdx];
-    //
-    //   char *nextState = AFD_getNextState(afd, input);
-    //   if (nextState && strcmp(nextState, state) == 0) {
-    //     Vector2 centerOffset = {0};
-    //
-    //     for (int otherNodeIdx = 0; otherNodeIdx < nodes.len; otherNodeIdx++)
-    //     {
-    //       Node otherNode = nodes.items[otherNodeIdx];
-    //       if (strcmp(otherNode.state, state) != 0) {
-    //         centerOffset = Vector2Add(centerOffset,
-    //                                   Vector2Subtract(node.pos,
-    //                                   otherNode.pos));
-    //       }
-    //
-    //       centerOffset =
-    //           Vector2Scale(Vector2Normalize(centerOffset), 1.8 * maxR);
-    //
-    //       if (!selfArrowDrawed) {
-    //         float angle = RAD2DEG * atan2(centerOffset.y, centerOffset.x);
-    //         float start = fmodf((angle + 225 + PADDING_FROM_NODE), 360);
-    //         float end = start + 270 - 2 * PADDING_FROM_NODE;
-    //
-    //         DrawRing(Vector2Add(node.pos, centerOffset), maxR - 2, maxR,
-    //         start,
-    //                  end, 20, edgeColor);
-    //         float endRad = DEG2RAD * (end);
-    //         Vector2 arrowEnd, arrowEndBack, arrowBackLeft, arrowBackRight,
-    //         dir,
-    //             perp;
-    //         arrowEnd =
-    //             Vector2Add(Vector2Add(node.pos, centerOffset),
-    //                        (Vector2){maxR * cosf(endRad), maxR *
-    //                        sinf(endRad)});
-    //         end -= TRIANGLE_SIZE;
-    //         endRad = DEG2RAD * end;
-    //         arrowEndBack =
-    //             Vector2Add(Vector2Add(node.pos, centerOffset),
-    //                        (Vector2){maxR * cosf(endRad), maxR *
-    //                        sinf(endRad)});
-    //
-    //         dir = Vector2Normalize(Vector2Subtract(arrowEnd, arrowEndBack));
-    //         perp = (Vector2){-dir.y, dir.x};
-    //         arrowBackLeft = Vector2Scale(Vector2Subtract(arrowEndBack, perp),
-    //                                      TRIANGLE_SIZE * 0.5);
-    //         arrowBackRight = Vector2Scale(Vector2Add(arrowEndBack, perp),
-    //                                       TRIANGLE_SIZE * 0.5);
-    //
-    //         DrawTriangle(arrowEnd, arrowBackLeft, arrowBackRight, edgeColor);
-    //       }
-    //
-    //       Vector2 tagPos =
-    //           Vector2Add(node.pos,
-    //           Vector2Scale(Vector2Normalize(centerOffset),
-    //                                             2.8 * maxR *
-    //                                             TAG_SEPARATION));
-    //     }
-    //   }
-    // }
 
     // draw nodes
     Color nodeColor;
@@ -304,7 +284,80 @@ void draw() {
   }
 
   EndMode2D();
+
+  // gui
+
+  if (liveMode) {
+    Vector2 pos, offset;
+    float r, alpha;
+    pos = (Vector2){20, 20};
+    offset = (Vector2){r * 2, -pos.y / 2};
+    r = 8;
+    alpha = sinf(GetTime() * 3);
+    alpha *= alpha;
+    DrawCircleV(pos, r, ColorAlpha(RED, alpha));
+    DrawTextEx(font, "Live mode", Vector2Add(pos, offset), FONT_SIZE, 0, BLACK);
+  }
+
+  // msg && input
+  if (typingStr) {
+    const char *textToShow = TextFormat("Enter string: %s", feedingStr);
+    if (liveMode) {
+      textToShow = "Type your string";
+    }
+
+    Vector2 pos =
+        (Vector2){FONT_SIZE / 2., GetRenderHeight() - (FONT_SIZE * 1.5)};
+    DrawTextEx(font, textToShow, pos, FONT_SIZE, 0, BLACK);
+    msg[0] = '\0';
+
+  } else if (msg[0] != '\0' && msgTimer > 0) {
+    Vector2 pos =
+        (Vector2){FONT_SIZE / 2., GetRenderHeight() - FONT_SIZE * 1.5};
+    msgTimer -= dt;
+    DrawTextEx(font, TextFormat("Error: ", msg), pos, FONT_SIZE, 0,
+               (Color){200, 0, 0, fminf(255, 255 * msgTimer)});
+  }
+
+  // draw feeding progress
+  if (feeding || (liveMode && strlen(feedingStr) > 0)) {
+    // TODO: measure feedingStr[: feedingIdx + 1] for offset, i will assume the
+    // font is always monospace
+    int baseCharWidth, strCursorAfter, strCursorOffset, strWidth, strPos, r;
+    Color c;
+    baseCharWidth = MeasureTextEx(font, "a", FONT_SIZE, 0).x;
+    strCursorOffset = baseCharWidth * feedingIdx + baseCharWidth / 2.;
+    strWidth = MeasureTextEx(font, feedingStr, FONT_SIZE, 0).x;
+    strPos = (GetRenderWidth() - strWidth) / 2.;
+    DrawTextEx(font, feedingStr, (Vector2){strPos, 20}, FONT_SIZE, 0, GRAY);
+    r = 4;
+    c = (feedingIdx < strlen(feedingStr) &&
+                 AFD_isValidInput(afd, feedingStr[feedingIdx])
+             ? GREEN
+             : RED);
+    DrawCircleV((Vector2){strPos + strCursorOffset, 20 + FONT_SIZE + r * 2}, r,
+                c);
+  }
+
+  else if (feedingFinished) {
+    const char *finishedMsg = "Feed finished";
+    int msgW = MeasureTextEx(font, finishedMsg, FONT_SIZE, 0).x;
+    DrawTextEx(font, finishedMsg, (Vector2){(GetRenderWidth() - msgW) / 2., 20},
+               FONT_SIZE, 0, BLACK);
+  }
 };
+
+void stopFeeding() {
+  feeding = false;
+  feedingIdx = 0;
+  feedingFinished = false;
+}
+
+void startFeeding() {
+  feeding = true;
+  feedingFinished = false;
+  feedingIdx = 0;
+}
 
 void input() {
 
@@ -313,7 +366,6 @@ void input() {
     running = false;
 
   // dragging
-
   if (!draggingNode && mouseOverNode != -1 &&
       IsMouseButtonDown(MOUSE_BUTTON_LEFT)) {
     draggingNode = true;
@@ -326,6 +378,75 @@ void input() {
       draggingNode = false;
       mouseOverNode = -1;
     }
+  }
+
+  // typing
+  if (IsKeyPressed(KEY_ENTER) || IsKeyPressed(KEY_KP_ENTER)) {
+
+    if (IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) {
+      liveMode = true;
+    }
+
+    if (!typingStr) {
+      AFD_reset(afd);
+
+      if (!liveMode)
+        stopFeeding();
+
+      typingStr = true;
+
+    } else {
+
+      if (!liveMode)
+        startFeeding();
+      else if (strlen(feedingStr) > 0) {
+
+        // TODO: use feedingIdx instead of strlen
+        AFD_feedOne(afd, feedingStr[strlen(feedingStr) - 1]);
+        memset(feedingStr, 0, MAX_FEEDING_STR_LEN);
+      }
+      typingStr = false;
+      liveMode = false;
+    }
+  }
+
+  if (IsKeyPressed(KEY_ESCAPE)) {
+    if (typingStr) {
+      memset(feedingStr, 0, MAX_FEEDING_STR_LEN);
+      typingStr = false;
+      liveMode = false;
+    } else
+      stopFeeding();
+  }
+
+  if (typingStr) {
+    char key = GetCharPressed();
+    while (key) {
+      if (32 <= key && key <= 126) { // printable chars
+        feedingStr[strlen(feedingStr)] = key;
+        if (liveMode) {
+          if (strlen(feedingStr) > 1) {
+
+            bool succ = AFD_feedOne(afd, feedingStr[strlen(feedingStr) - 2]);
+          }
+          feedingIdx = strlen(feedingStr) - 1;
+        }
+        key = GetCharPressed();
+      }
+    }
+  }
+
+  if (!liveMode && IsKeyPressed(KEY_BACKSPACE)) {
+    if (IsKeyDown(KEY_LEFT_CONTROL)) {
+      memset(feedingStr, 0, MAX_FEEDING_STR_LEN);
+    } else {
+      feedingStr[strlen(feedingStr) - 1] = '\0';
+    }
+  }
+
+  if (typingStr && !liveMode && IsKeyDown(KEY_LEFT_CONTROL) &&
+      IsKeyPressed(KEY_V)) {
+    strncpy(feedingStr, GetClipboardText(), MAX_FEEDING_STR_LEN);
   }
 }
 
@@ -340,9 +461,10 @@ void run(AFD *afd) {
 
   init(afd);
   while (running && !WindowShouldClose()) {
-    update(GetFrameTime());
+    float dt = GetFrameTime();
+    update(dt);
     BeginDrawing();
-    draw();
+    draw(dt);
     EndDrawing();
     input();
   }
