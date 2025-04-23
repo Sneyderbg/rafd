@@ -4,7 +4,7 @@ OBJECTS := $(patsubst %.c,%.o,$(wildcard *.c))
 INCLUDE_DIRS := -I./ -I./include/ -I$(RAYLIB_PATH)/src
 LDFLAGS := -L$(RAYLIB_PATH)/src
 LDLIBS := -lraylib -lgdi32 -lopengl32 -lwinmm
-CFLAGS := -g -O0 -std=c99 
+CFLAGS := -g -O0 -std=c99 -Wall
 EXE_NAME := rafd
 
 $(EXE_NAME): $(OBJECTS) 

@@ -2,6 +2,7 @@
 #include "afd.h"
 #include "config.h"
 #include "utils.h"
+#include <float.h>
 #include <math.h>
 #include <raylib.h>
 #include <raymath.h>
@@ -65,7 +66,7 @@ void init(AFD *_afd) {
   afd = _afd;
   AFD_reset(afd);
 
-  for (int i = 0; i < afd->Q.len; i++) {
+  for (size_t i = 0; i < afd->Q.len; i++) {
     char *state = afd->Q.items[i];
     Node node = {.pos = (Vector2){GetRandomValue(0, 10) * 10,
                                   10 * GetRandomValue(0, 10)},
@@ -84,7 +85,7 @@ void init(AFD *_afd) {
   SetExitKey(-1);
   font = LoadFont("./fonts/CodeSquaredRegular-AYRg.ttf");
 
-  for (int i = 0; i < afd->Q.len; i++) {
+  for (size_t i = 0; i < afd->Q.len; i++) {
     char *state = afd->Q.items[i];
     DA_append(nameLens, MeasureTextEx(font, state, FONT_SIZE, 0).x);
     maxR = fmaxf(maxR, nameLens.items[nameLens.len - 1]);
@@ -98,6 +99,51 @@ void init(AFD *_afd) {
       .zoom = 1.};
 
   running = true;
+}
+
+void updatePhysics(float dt) {
+  for (size_t nodeIdx = 0; nodeIdx < nodes.len; nodeIdx++) {
+    Node *node = &nodes.items[nodeIdx];
+    for (size_t otherNodeIdx = nodeIdx + 1; otherNodeIdx < nodes.len;
+         otherNodeIdx++) {
+
+      Node *otherNode = &nodes.items[otherNodeIdx];
+      Vector2 dir, attractionF = {0}, repelF, finalF;
+      float distance, edgeLen;
+
+      dir = Vector2Subtract(otherNode->pos, node->pos);
+      distance = Vector2Length(dir);
+      edgeLen = fmaxf(0, distance - maxR * (2 + FORCE_LENGTH_START));
+      distance = fmaxf(maxR * 2, distance - maxR * (2 + FORCE_LENGTH_START));
+      dir = Vector2Normalize(dir);
+
+      // if there is a connection in any direction attract both nodes
+      if (AFD_hasConnection(afd, nodeIdx, otherNodeIdx) ||
+          AFD_hasConnection(afd, otherNodeIdx, nodeIdx)) {
+        attractionF = Vector2Scale(dir, EDGE_FORCE * edgeLen);
+      }
+
+      // repel each pair of nodes
+      repelF = Vector2Scale(dir, -NODE_REPULSION / (distance * distance));
+
+      finalF = Vector2Add(attractionF, repelF);
+
+      node->vel = Vector2Add(node->vel, Vector2Scale(finalF, dt));
+      otherNode->vel =
+          Vector2Subtract(otherNode->vel, Vector2Scale(finalF, dt));
+    }
+  }
+
+  // apply velocities
+  for (size_t nodeIdx = 0; nodeIdx < nodes.len; nodeIdx++) {
+    Node *node = &nodes.items[nodeIdx];
+
+    // deccelerate nodes so they reach an stable positioning
+    Vector2 deccelF = Vector2Scale(Vector2Normalize(node->vel), NODE_DECCEL);
+    node->vel = Vector2Subtract(node->vel, deccelF);
+
+    node->pos = Vector2Add(node->pos, Vector2Scale(node->vel, dt));
+  }
 }
 
 void update(float dt) {
@@ -116,9 +162,9 @@ void update(float dt) {
                   1024);
           msgTimer = 4;
           feeding = false;
+        } else {
+          feedingIdx++;
         }
-
-        feedingIdx++;
       }
     } else {
       feedingFinished = true;
@@ -135,7 +181,7 @@ void update(float dt) {
   if (!draggingNode) {
 
     mouseOverNode = -1;
-    for (int nodeIdx = 0; nodeIdx < nodes.len; nodeIdx++) {
+    for (size_t nodeIdx = 0; nodeIdx < nodes.len; nodeIdx++) {
       Node node = nodes.items[nodeIdx];
 
       if (CheckCollisionPointCircle(mouseWorldPos, node.pos, maxR)) {
@@ -163,14 +209,15 @@ void draw(float dt) {
     nextInput = feedingStr[feedingIdx];
   }
 
-  for (int stateIdx = 0; stateIdx < nodes.len; stateIdx++) {
+  for (size_t stateIdx = 0; stateIdx < nodes.len; stateIdx++) {
     Node node = nodes.items[stateIdx];
     char *state = node.state;
     bool isCurrent = AFD_isCurrent(afd, state);
     bool isPrevious = AFD_isPrevious(afd, state);
+    bool isNext = AFD_isNext(afd, state, nextInput);
 
     // draw edges
-    for (int otherStateIdx = 0; otherStateIdx < nodes.len; otherStateIdx++) {
+    for (size_t otherStateIdx = 0; otherStateIdx < nodes.len; otherStateIdx++) {
       Node otherNode = nodes.items[otherStateIdx];
       char *edgeInputs = AFD_getConnection(afd, stateIdx, otherStateIdx);
       int inputsLen = strlen(edgeInputs);
@@ -199,7 +246,7 @@ void draw(float dt) {
         float angle, start, end, endRad;
 
         // accumulate inverted directions to other nodes
-        for (int i = 0; i < nodes.len; i++) {
+        for (size_t i = 0; i < nodes.len; i++) {
           if (stateIdx != i) {
             diff = Vector2Subtract(node.pos, nodes.items[i].pos);
             centerOffset = Vector2Add(centerOffset, diff);
@@ -232,14 +279,13 @@ void draw(float dt) {
         DrawTriangle(arrowEnd, Vector2Subtract(arrowEndBack, perp),
                      Vector2Add(arrowEndBack, perp), edgeColor);
 
+        memset(inputsJoined, 0, 2 * afd->sigma.len);
         size_t numInputs = strlen(edgeInputs);
 
         for (size_t i = 0; i < numInputs; i++) {
           inputsJoined[2 * i] = edgeInputs[i];
           if (i < numInputs - 1) {
             inputsJoined[2 * i + 1] = ',';
-          } else {
-            inputsJoined[2 * i + 1] = '\0';
           }
         }
 
@@ -290,6 +336,7 @@ void draw(float dt) {
 
         DrawTriangle(end, endRight, endLeft, edgeColor);
 
+        memset(inputsJoined, 0, 2 * afd->sigma.len);
         size_t numInputs = strlen(edgeInputs);
 
         for (size_t i = 0; i < numInputs; i++) {
@@ -316,7 +363,7 @@ void draw(float dt) {
     } else if (isCurrent) {
       nodeColor = !feedingFinished ? ColorBrightness(RED, 0.6) : RED;
     } else if (isPrevious) {
-      nodeColor = ColorBrightness(BROWN, 0.4);
+      nodeColor = ColorBrightness(BLACK, 0.5);
     } else {
       nodeColor = (Color){200, 200, 200, 255};
     }
@@ -325,6 +372,9 @@ void draw(float dt) {
         node.pos,
         Vector2Scale((Vector2){nameLens.items[stateIdx], FONT_SIZE}, 1 / 2.));
     DrawCircleV(node.pos, maxR, nodeColor);
+    if (isNext) {
+      DrawRing(node.pos, maxR - 4, maxR - 2, 0, 360, 20, GREEN);
+    }
     DrawTextEx(font, state, textPos, FONT_SIZE, 0, BLACK);
 
     if (node.isTarget) {
@@ -364,18 +414,25 @@ void draw(float dt) {
     Vector2 pos =
         (Vector2){FONT_SIZE / 2., GetRenderHeight() - FONT_SIZE * 1.5};
     msgTimer -= dt;
-    DrawTextEx(font, TextFormat("Error: ", msg), pos, FONT_SIZE, 0,
+    DrawTextEx(font, TextFormat("Error: %s", msg), pos, FONT_SIZE, 0,
                (Color){200, 0, 0, fminf(255, 255 * msgTimer)});
   }
 
   // draw feeding progress
   if (feeding || (liveMode && strlen(feedingStr) > 0)) {
-    // TODO: measure feedingStr[: feedingIdx + 1] for offset, i will assume the
-    // font is always monospace
-    int baseCharWidth, strCursorOffset, strWidth, strPos, r;
+    int cursorBeforeFeed, cursorAfterFeed, strCursorOffset, strWidth, strPos, r;
     Color c;
-    baseCharWidth = MeasureTextEx(font, "a", FONT_SIZE, 0).x;
-    strCursorOffset = baseCharWidth * feedingIdx + baseCharWidth / 2.;
+
+    char feedingStrCpy[MAX_FEEDING_STR_LEN];
+    strncpy(feedingStrCpy, feedingStr, feedingIdx + 1);
+
+    feedingStrCpy[feedingIdx + 1] = '\0';
+    cursorAfterFeed = MeasureTextEx(font, feedingStrCpy, FONT_SIZE, 0).x;
+
+    feedingStrCpy[feedingIdx] = '\0';
+    cursorBeforeFeed = MeasureTextEx(font, feedingStrCpy, FONT_SIZE, 0).x;
+
+    strCursorOffset = (cursorBeforeFeed + cursorAfterFeed) / 2.;
     strWidth = MeasureTextEx(font, feedingStr, FONT_SIZE, 0).x;
     strPos = (GetRenderWidth() - strWidth) / 2.;
     DrawTextEx(font, feedingStr, (Vector2){strPos, 20}, FONT_SIZE, 0, GRAY);
@@ -407,6 +464,8 @@ void startFeeding() {
   feedingFinished = false;
   feedingIdx = 0;
 }
+
+void drawDebug(float dt) {}
 
 void input() {
 
@@ -510,11 +569,21 @@ void close() {
 void run(AFD *afd) {
 
   init(afd);
+  float fixedDt = 1.0 / PHYSICS_FPS;
+  float dtAcc = 0.;
   while (running && !WindowShouldClose()) {
     float dt = GetFrameTime();
+    dtAcc += fixedDt;
+
+    while (dtAcc >= fixedDt) {
+      updatePhysics(fixedDt);
+      dtAcc -= fixedDt;
+    }
+
     update(dt);
     BeginDrawing();
     draw(dt);
+    drawDebug(dt);
     EndDrawing();
     input();
   }

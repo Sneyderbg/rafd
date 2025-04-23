@@ -1,6 +1,7 @@
 #include "afd.h"
 #include "utils.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +33,10 @@ int AFD_getStateIdx(AFD *afd, char *state) {
 }
 
 int AFD_getInputIdx(AFD *afd, char input) {
+
+  if (input == '\0') {
+    return -1;
+  }
 
   for (int i = 0; i < afd->sigma.len; i++) {
     if (afd->sigma.items[i] == input)
@@ -93,11 +98,18 @@ bool AFD_isPrevious(AFD *afd, char *state) {
   return strcmp(afd->previousState, state) == 0;
 }
 
+bool AFD_isNext(AFD *afd, char *state, char input) {
+  char *next = AFD_getNextState(afd, input);
+  if (!next)
+    return false;
+  return strcmp(next, state) == 0;
+}
+
 // returns false if input is not in sigma, true otherwise
 bool AFD_feedOne(AFD *afd, char input) {
   char *next_state = AFD_getNextState(afd, input);
   if (next_state == NULL) {
-    false;
+    return false;
   }
 
   afd->previousState = afd->currentState;

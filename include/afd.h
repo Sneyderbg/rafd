@@ -8,7 +8,7 @@ typedef struct AFD {
   DA_new(sigma, char); // only single chars
   DA_new(Q, char *);
   DA_new(F, char *);
-  char ***delta; // delta[[state]][[input]] => next_state
+  char ***delta; // delta[[stateIdx]][[inputIdx]] => next_state
 
   // conn[[state0 * len(Q) + state1]] => char[[maxlen(sigma)]] inputs
   // Incidence matrix: it has arrays of inputs
@@ -31,6 +31,7 @@ bool AFD_isCurrentSuccess(AFD *afd);
 bool AFD_isStateSuccess(AFD *afd, char *state);
 bool AFD_isCurrent(AFD *afd, char *state);
 bool AFD_isPrevious(AFD *afd, char *state);
+bool AFD_isNext(AFD *afd, char *state, char input);
 bool AFD_feedOne(AFD *afd, char input);
 int AFD_feed(AFD *afd, char *string, bool skipErrors);
 void AFD_reset(AFD *afd);

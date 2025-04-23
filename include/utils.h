@@ -3,7 +3,6 @@
 #include <malloc.h>
 #include <stddef.h>
 #include <stdio.h>
-#include <stdlib.h>
 
 #define DA_append(da, item)                                                    \
   {                                                                            \

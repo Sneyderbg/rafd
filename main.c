@@ -4,6 +4,7 @@
 #include <stddef.h>
 
 int main(int argc, char *argv[]) {
+
   AFD *afd = AFD_parse("./def.afdd");
   run(afd);
   AFD_free(afd);
