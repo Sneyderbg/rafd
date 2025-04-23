@@ -31,3 +31,10 @@
 #define TODO(msg)                                                              \
   fprintf(stderr, "TODO: %s\n", msg);                                          \
   exit(1)
+
+#define printfErr(msg, ...)                                                    \
+  fprintf(stderr, "ERROR: ");                                                  \
+  fprintf(stderr, msg, __VA_ARGS__);                                           \
+  fprintf(stderr, "\n")
+
+#define printErr(err) fprintf(stderr, "ERROR: %s\n", err)\

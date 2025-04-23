@@ -145,14 +145,16 @@ void AFD_reset(AFD *afd) {
 void AFD_free(AFD *afd) {
   if (afd->connections != NULL) {
     for (int pos = 0; pos < afd->Q.len * afd->Q.len; pos++) {
-      free(afd->connections[pos]);
+      if (afd->connections[pos])
+        free(afd->connections[pos]);
     }
     free(afd->connections);
   }
 
   if (afd->delta != NULL) {
     for (int row = 0; row < afd->Q.len; row++) {
-      free(afd->delta[row]);
+      if (afd->delta[row])
+        free(afd->delta[row]);
     }
     free(afd->delta);
   }
@@ -161,128 +163,4 @@ void AFD_free(AFD *afd) {
   DA_free(afd->Q);
   DA_free(afd->sigma);
   free(afd);
-}
-
-#define MAX_LINE_LENGTH 1024
-AFD *AFD_parse(const char *filename) {
-  FILE *fileDef = NULL;
-  fopen_s(&fileDef, filename, "r");
-
-  if (!fileDef) {
-    printf("ERROR: %s\n", strerror(errno));
-    return NULL;
-  }
-
-  AFD *afd = calloc(1, sizeof(AFD));
-  int notEmptyLineNumber = 1;
-  char line[MAX_LINE_LENGTH];
-  while (fgets(line, MAX_LINE_LENGTH, fileDef)) {
-
-    char *nextToken = NULL;
-    char *token = strtok_s(line, " \n", &nextToken);
-    char tokenIdx = 0;
-
-    if (!token)
-      continue;
-
-    while (token) {
-
-      if (strlen(token) <= 0)
-        continue;
-
-      // parsing sigma
-      if (notEmptyLineNumber == 1) {
-
-        if (strlen(token) != 1) {
-          fprintf(stderr,
-                  "ERROR: error parsing sigma in file %s, sigma must have only "
-                  "chars.\n",
-                  filename);
-          AFD_free(afd);
-          fclose(fileDef);
-          exit(1);
-        }
-
-        DA_append(afd->sigma, token[0]);
-      } else {
-
-        // once Q is defined all tokens must be valid states of Q
-        int stateIdx = AFD_getStateIdx(afd, token);
-        if (notEmptyLineNumber > 2 && stateIdx == -1) {
-          fprintf(stderr, "ERROR: %s not a valid state\n", token);
-          AFD_free(afd);
-          fclose(fileDef);
-          exit(1);
-        }
-
-        char *stateToken;
-        if (notEmptyLineNumber > 2) {
-          stateToken = afd->Q.items[stateIdx];
-        } else {
-          stateToken = malloc(strlen(token) * sizeof(char));
-          strcpy(stateToken, token);
-        }
-
-        switch (notEmptyLineNumber) {
-        case 2: // Q
-          DA_append(afd->Q, stateToken);
-          break;
-        case 3: // q_0
-          afd->q0 = stateToken;
-          break;
-        case 4: // F
-
-          DA_append(afd->F, stateToken);
-          break;
-        default: // delta 5 -> 5+len(Q)
-          // initialize delta and connections
-          if (afd->delta == NULL) {
-            size_t numStates = afd->Q.len;
-            afd->delta = malloc(numStates * sizeof(char *));
-            for (int row = 0; row < numStates; row++) {
-              afd->delta[row] = malloc(afd->sigma.len * sizeof(char *));
-            }
-
-            afd->connections = malloc(numStates * numStates * sizeof(char *));
-            for (int pos = 0; pos < numStates * numStates; pos++) {
-              afd->connections[pos] =
-                  calloc((afd->sigma.len + 1), sizeof(char));
-            }
-          }
-
-          int qIndex = notEmptyLineNumber - 5;
-          int inputIdx = tokenIdx;
-          if (qIndex < afd->Q.len && inputIdx < afd->sigma.len) {
-            int nextStateIdx = AFD_getStateIdx(afd, stateToken);
-            if (nextStateIdx == -1) {
-              fprintf(stderr, "ERROR: this should not happen");
-              AFD_free(afd);
-              fclose(fileDef);
-              exit(2);
-            }
-
-            afd->delta[qIndex][inputIdx] = stateToken;
-            char *inputs = afd->connections[qIndex * afd->Q.len + nextStateIdx];
-            char *inputsEndPtr = strchr(inputs, '\0');
-            *inputsEndPtr = afd->sigma.items[inputIdx];
-
-          } else {
-            printf("INFO: Skipping token %d at delta definition on not empty "
-                   "line %d\n",
-                   tokenIdx, notEmptyLineNumber);
-            free(stateToken);
-          }
-          break;
-        }
-      }
-
-      token = strtok_s(NULL, " \n", &nextToken);
-      tokenIdx++;
-    }
-
-    notEmptyLineNumber++;
-  }
-
-  fclose(fileDef);
-  return afd;
 }

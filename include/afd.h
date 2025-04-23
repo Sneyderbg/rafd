@@ -37,6 +37,6 @@ int AFD_feed(AFD *afd, char *string, bool skipErrors);
 void AFD_reset(AFD *afd);
 void AFD_free(AFD *afd);
 
-AFD *AFD_parse(const char *filename);
+AFD *AFD_parse(const char *filename, const char sep);
 
 #endif // !AFD_H

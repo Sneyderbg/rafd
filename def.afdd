@@ -1,0 +1,17 @@
+states
+q0 q1 q2 q3
+
+sigma
+0 1
+
+init_state
+q0
+
+final_states
+q3
+
+delta
+q2 q1
+q3 q0
+q0 q0
+q2 q1
