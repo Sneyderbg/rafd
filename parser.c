@@ -211,9 +211,14 @@ void parseDelta() {
       *inputsEndPtr = parsingCtx.parsedAFD->sigma.items[parsingCtx.tokenIdx];
     }
 
-    // if not enough inputs
-    if (parsingCtx.tokenIdx < numInputs - 1) {
-      printfErr("Delta must be have %zu columns.", numInputs + 1);
+    // if not enough columns for inputs
+    if (parsingCtx.tokenIdx == 0) {
+      printfErr("There are missing rows for " DELTA_TAG
+                ", expected %zu, found %zu",
+                numStates, qIndex);
+      cancelParsing();
+    } else if (parsingCtx.tokenIdx < numInputs - 1) {
+      printfErr(DELTA_TAG "must have %zu columns.", numInputs);
       cancelParsing();
     } else if (parsingCtx.tokenIdx > numInputs) {
       printf("WARNING: Skipping exceding columns at param " DELTA_TAG
@@ -222,6 +227,13 @@ void parseDelta() {
     }
 
     qIndex++;
+  }
+
+  if (qIndex < numStates - 1) {
+    printfErr("There are missing rows for " DELTA_TAG
+              ", expected %zu, found %zu",
+              numStates, qIndex);
+    cancelParsing();
   }
 
   parsingCtx.parsedParams[DELTA] = true;

@@ -31,13 +31,6 @@ bool running = false;
 
 bool show_help = false;
 int helpHintTimer = 4; // secs
-char *help_info = " \
-H            - Show this help \
-Enter        - Start typing a new input for the afd\
-Ctrl + Enter - Start typing in live mode (feed as you type)\
-Esc          - Cancel typing\
-Left click   - Drag nodes\
-";
 bool draggingNode = false;
 int mouseOverNode = -1;
 MouseCursor currCursor = MOUSE_CURSOR_DEFAULT;
@@ -58,6 +51,9 @@ Vector2 mouseWorldPos = {0};
 
 Camera2D camera = {0};
 Font font;
+Shader bgShader;
+Texture2D bgTexture;
+
 DA_new(nameLens, float);
 float maxR = 0;
 char *inputsJoined = NULL;
@@ -79,11 +75,15 @@ void init(AFD *_afd) {
   }
   inputsJoined = malloc(2 * afd->sigma.len * sizeof(char));
 
-  InitWindow(1280, 600, "RAFD");
+  InitWindow(WIDTH, HEIGHT, "RAFD");
   SetWindowState(FLAG_WINDOW_RESIZABLE);
-  SetTargetFPS(100);
+  SetTargetFPS(FPS);
   SetExitKey(-1);
   font = LoadFont("./fonts/CodeSquaredRegular-AYRg.ttf");
+  bgShader = LoadShader(NULL, "./shaders/bg.frag");
+  Image bgIm = GenImageColor(WIDTH, HEIGHT, RAYWHITE);
+  bgTexture = LoadTextureFromImage(bgIm);
+  UnloadImage(bgIm);
 
   for (size_t i = 0; i < afd->Q.len; i++) {
     char *state = afd->Q.items[i];
@@ -197,10 +197,35 @@ void update(float dt) {
       SetMouseCursor(currCursor);
     }
   }
+
+  if (IsWindowResized()) {
+    // TODO: noc
+  }
 }
 
 void draw(float dt) {
   ClearBackground(RAYWHITE);
+
+  if (IsShaderValid(bgShader)) {
+
+    const int resLoc = GetShaderLocation(bgShader, "resolution");
+    const int targetLoc = GetShaderLocation(bgShader, "camTarget");
+    const int zoomLoc = GetShaderLocation(bgShader, "camZoom");
+
+    SetShaderValue(bgShader, resLoc,
+                   &(Vector2){GetRenderWidth(), GetRenderHeight()},
+                   SHADER_UNIFORM_VEC2);
+    SetShaderValue(bgShader, targetLoc,
+                   &(Vector2){camera.target.x, -camera.target.y},
+                   SHADER_UNIFORM_VEC2);
+    SetShaderValue(bgShader, zoomLoc, &camera.zoom, SHADER_UNIFORM_FLOAT);
+
+    BeginShaderMode(bgShader);
+    DrawTexturePro(bgTexture, (Rectangle){0, 0, WIDTH, HEIGHT},
+                   (Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()},
+                   (Vector2){0, 0}, 0, WHITE);
+    EndShaderMode();
+  }
 
   BeginMode2D(camera);
 
@@ -465,9 +490,15 @@ void startFeeding() {
   feedingIdx = 0;
 }
 
-void drawDebug(float dt) {}
+void drawDebug(float dt) { DrawFPS(10, 10); }
 
 void input() {
+
+  // reload shaders
+  if (IsKeyPressed(KEY_R)) {
+    UnloadShader(bgShader);
+    bgShader = LoadShader(NULL, "./shaders/bg.frag");
+  }
 
   // quit
   if (!typingStr && IsKeyPressed(KEY_Q))
@@ -486,6 +517,20 @@ void input() {
       draggingNode = false;
       mouseOverNode = -1;
     }
+  }
+
+  // move camera
+  if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
+    camera.target = Vector2Subtract(
+        camera.target, Vector2Scale(GetMouseDelta(), 1.0 / camera.zoom));
+  }
+
+  // zoom
+  const float wheel = GetMouseWheelMove();
+  if (wheel > 0) {
+    camera.zoom *= CAM_ZOOM_FACTOR;
+  } else if (wheel < 0) {
+    camera.zoom /= CAM_ZOOM_FACTOR;
   }
 
   // typing
@@ -559,6 +604,8 @@ void input() {
 }
 
 void close() {
+  UnloadTexture(bgTexture);
+  UnloadShader(bgShader);
   UnloadFont(font);
   free(inputsJoined);
   DA_free(nodes);
