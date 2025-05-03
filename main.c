@@ -1,7 +1,6 @@
 #include "afd.h"
 #include "visualizer.h"
 #include <stdbool.h>
-#include <stddef.h>
 
 int main(int argc, char *argv[]) {
 

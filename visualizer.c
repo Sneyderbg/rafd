@@ -2,7 +2,6 @@
 #include "afd.h"
 #include "config.h"
 #include "utils.h"
-#include <float.h>
 #include <math.h>
 #include <raylib.h>
 #include <raymath.h>
@@ -512,6 +511,7 @@ void input() {
 
   if (draggingNode && mouseOverNode != -1) {
     nodes.items[mouseOverNode].pos = mouseWorldPos;
+    nodes.items[mouseOverNode].vel = Vector2Zero();
     if (IsMouseButtonUp(MOUSE_BUTTON_LEFT)) {
 
       draggingNode = false;
