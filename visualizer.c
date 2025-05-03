@@ -22,6 +22,7 @@ typedef struct Node {
 // nodes && afd states have the same idxs
 DA_new(nodes, Node);
 
+// TODO: add afd def load functionality
 AFD *afd = NULL;
 
 // GLOBALS
@@ -57,8 +58,13 @@ DA_new(nameLens, float);
 float maxR = 0;
 char *inputsJoined = NULL;
 
-void init(AFD *_afd) {
-  afd = _afd;
+void init() {
+  char *error;
+  afd = AFD_parse("./def.afdd", ' ', &error);
+  if (afd == NULL) {
+    printErr(error);
+    exit(1);
+  }
   AFD_reset(afd);
 
   for (size_t i = 0; i < afd->Q.len; i++) {
@@ -605,7 +611,10 @@ void input() {
   }
 }
 
-void close() {
+void closeVis() {
+  if (afd != NULL) {
+    free(afd);
+  }
   UnloadTexture(bgTexture);
   UnloadShader(bgShader);
   UnloadFont(font);
@@ -615,9 +624,8 @@ void close() {
   CloseWindow();
 }
 
-void run(AFD *afd) {
-
-  init(afd);
+void runVis() {
+  init();
   float fixedDt = 1.0 / PHYSICS_FPS;
   float dtAcc = 0.;
   while (running && !WindowShouldClose()) {
@@ -638,5 +646,5 @@ void run(AFD *afd) {
     EndDrawing();
     input();
   }
-  close();
+  closeVis();
 }

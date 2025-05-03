@@ -15,8 +15,6 @@
 #define F_TAG "final_states"
 #define DELTA_TAG "delta"
 
-const char *paramsNames[5] = {SIGMA_TAG, Q_TAG, Q0_TAG, F_TAG, DELTA_TAG};
-
 typedef enum AfdParameter {
   SIGMA = 0,
   STATES,
@@ -24,6 +22,16 @@ typedef enum AfdParameter {
   FINAL_STATES,
   DELTA
 } AfdParameter;
+
+bool parseSigma(void);
+bool parseQ(void);
+bool parseQ0(void);
+bool parseF(void);
+bool parseDelta(void);
+
+const char *paramsNames[5] = {SIGMA_TAG, Q_TAG, Q0_TAG, F_TAG, DELTA_TAG};
+bool (*parsingFuncs[5])(void) = {&parseSigma, &parseQ, &parseQ0, &parseF,
+                                 &parseDelta};
 
 struct {
   AFD *parsedAFD;
@@ -36,13 +44,16 @@ struct {
   int tokenIdx;
   char actualSep[2];
   bool parsedParams[5];
+  char errorMsg[1024];
 } parsingCtx = {0};
 
-void cancelParsing() {
-  AFD_free(parsingCtx.parsedAFD);
-  fclose(parsingCtx.file);
-  exit(1);
-}
+#define cancelParsing()                                                        \
+  AFD_free(parsingCtx.parsedAFD);                                              \
+  fclose(parsingCtx.file);                                                     \
+  if (errorMsg != NULL) {                                                      \
+    *errorMsg = parsingCtx.errorMsg;                                           \
+  }                                                                            \
+  return NULL
 
 bool readLine() {
   parsingCtx.nextToken = NULL;
@@ -64,31 +75,34 @@ bool readToken() {
   return parsingCtx.token != NULL;
 }
 
-void parseSigma() {
+bool parseSigma() {
   if (!readLine()) {
-    printfErr("Can't parse contents for " SIGMA_TAG " at file '%s'",
-              parsingCtx.filename);
-    cancelParsing();
+    sprintf(parsingCtx.errorMsg,
+            "Can't parse contents for " SIGMA_TAG " at file '%s'",
+            parsingCtx.filename);
+    return false;
   }
 
   while (readToken()) {
 
     if (strlen(parsingCtx.token) != 1) {
-      printErr(SIGMA_TAG " contents must have only chars of lenght 1.");
-      printfErr("token = %s", parsingCtx.token);
-      cancelParsing();
+      sprintf(parsingCtx.errorMsg,
+              SIGMA_TAG
+              " contents must have only chars of lenght 1: token = %s",
+              parsingCtx.token);
+      return false;
     }
 
     DA_append(parsingCtx.parsedAFD->sigma, parsingCtx.token[0]);
   }
 
-  parsingCtx.parsedParams[SIGMA] = true;
+  return true;
 }
 
-void parseQ() {
+bool parseQ() {
   if (!readLine()) {
-    printErr("Can't parse contents for " Q_TAG);
-    cancelParsing();
+    strcpy(parsingCtx.errorMsg, "Can't parse contents for " Q_TAG);
+    return false;
   }
 
   while (readToken()) {
@@ -100,48 +114,51 @@ void parseQ() {
     DA_append(parsingCtx.parsedAFD->Q, stateToken);
   }
 
-  parsingCtx.parsedParams[STATES] = true;
+  return true;
 }
 
-void parseQ0() {
+bool parseQ0() {
   if (!parsingCtx.parsedParams[STATES]) {
-    printErr(Q0_TAG " requires " Q_TAG " to be first defined.");
-    cancelParsing();
+    strcpy(parsingCtx.errorMsg,
+           Q0_TAG " requires " Q_TAG " to be first defined.");
+    return false;
   }
 
   if (!readLine()) {
-    printErr("Can't parse contents for " Q0_TAG);
-    cancelParsing();
+    strcpy(parsingCtx.errorMsg, "Can't parse contents for " Q0_TAG);
+    return false;
   }
 
   while (readToken()) {
     if (parsingCtx.tokenIdx > 0) {
       // TODO: Make warning instead of error and accept only first one
-      printErr("There must exist only one initial state");
-      cancelParsing();
+      strcpy(parsingCtx.errorMsg, "There must exist only one initial state");
+      return false;
     }
 
     int stateIdx = AFD_getStateIdx(parsingCtx.parsedAFD, parsingCtx.token);
     if (stateIdx == -1) {
-      printfErr("%s final state not a valid state of " Q_TAG, parsingCtx.token);
-      cancelParsing();
+      sprintf(parsingCtx.errorMsg, "%s final state not a valid state of " Q_TAG,
+              parsingCtx.token);
+      return false;
     }
 
     parsingCtx.parsedAFD->q0 = parsingCtx.parsedAFD->Q.items[stateIdx];
   }
 
-  parsingCtx.parsedParams[INITIAL_STATE] = true;
+  return true;
 }
 
-void parseF() {
+bool parseF() {
   if (!parsingCtx.parsedParams[STATES]) {
-    printErr(F_TAG " requires " Q_TAG " to be first defined.");
-    cancelParsing();
+    strcpy(parsingCtx.errorMsg,
+           F_TAG " requires " Q_TAG " to be first defined.");
+    return false;
   }
 
   if (!readLine()) {
-    printErr("Can't parse contents for " F_TAG);
-    cancelParsing();
+    strcpy(parsingCtx.errorMsg, "Can't parse contents for " F_TAG);
+    return false;
   }
 
   char *stateToken;
@@ -149,26 +166,29 @@ void parseF() {
 
     int stateIdx = AFD_getStateIdx(parsingCtx.parsedAFD, parsingCtx.token);
     if (stateIdx == -1) {
-      printfErr("%s final state not a valid state of " Q_TAG, parsingCtx.token);
-      cancelParsing();
+      sprintf(parsingCtx.errorMsg, "%s final state not a valid state of " Q_TAG,
+              parsingCtx.token);
+      return false;
     }
 
     stateToken = parsingCtx.parsedAFD->Q.items[stateIdx];
     DA_append(parsingCtx.parsedAFD->F, stateToken);
   }
 
-  parsingCtx.parsedParams[FINAL_STATES] = true;
+  return true;
 }
 
-void parseDelta() {
+bool parseDelta() {
   if (!parsingCtx.parsedParams[SIGMA]) {
-    printErr(DELTA_TAG " requires " SIGMA_TAG " to be first defined.");
-    cancelParsing();
+    strcpy(parsingCtx.errorMsg,
+           DELTA_TAG " requires " SIGMA_TAG " to be first defined.");
+    return false;
   }
 
   if (!parsingCtx.parsedParams[STATES]) {
-    printErr(DELTA_TAG " requires " Q_TAG " to be first defined.");
-    cancelParsing();
+    strcpy(parsingCtx.errorMsg,
+           DELTA_TAG " requires " Q_TAG " to be first defined.");
+    return false;
   }
 
   // alloc delta and connections
@@ -197,9 +217,9 @@ void parseDelta() {
       int nextStateIdx =
           AFD_getStateIdx(parsingCtx.parsedAFD, parsingCtx.token);
       if (nextStateIdx == -1) {
-        printfErr("%s final state not a valid state of " Q_TAG,
-                  parsingCtx.token);
-        cancelParsing();
+        sprintf(parsingCtx.errorMsg,
+                "%s final state not a valid state of " Q_TAG, parsingCtx.token);
+        return false;
       }
       stateToken = parsingCtx.parsedAFD->Q.items[nextStateIdx];
 
@@ -213,13 +233,15 @@ void parseDelta() {
 
     // if not enough columns for inputs
     if (parsingCtx.tokenIdx == 0) {
-      printfErr("There are missing rows for " DELTA_TAG
-                ", expected %zu, found %zu",
-                numStates, qIndex);
-      cancelParsing();
+      sprintf(parsingCtx.errorMsg,
+              "There are missing rows for " DELTA_TAG
+              ", expected %zu, found %zu",
+              numStates, qIndex);
+      return false;
     } else if (parsingCtx.tokenIdx < (int)numInputs - 1) {
-      printfErr(DELTA_TAG "must have %zu columns.", numInputs);
-      cancelParsing();
+      sprintf(parsingCtx.errorMsg, DELTA_TAG "must have %zu columns.",
+              numInputs);
+      return false;
     } else if (parsingCtx.tokenIdx > (int)numInputs) {
       printf("WARNING: Skipping exceding columns at param " DELTA_TAG
              " in file %s\n",
@@ -230,21 +252,21 @@ void parseDelta() {
   }
 
   if (qIndex < numStates - 1) {
-    printfErr("There are missing rows for " DELTA_TAG
-              ", expected %zu, found %zu",
-              numStates, qIndex);
-    cancelParsing();
+    sprintf(parsingCtx.errorMsg,
+            "There are missing rows for " DELTA_TAG ", expected %zu, found %zu",
+            numStates, qIndex);
+    return false;
   }
 
-  parsingCtx.parsedParams[DELTA] = true;
+  return true;
 }
 
-AFD *AFD_parse(const char *filename, const char sep) {
+AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
   parsingCtx.file = fopen(filename, "r");
 
   if (!parsingCtx.file) {
-    printfErr("%s", strerror(errno));
-    return NULL;
+    sprintf(parsingCtx.errorMsg, "%s", strerror(errno));
+    cancelParsing();
   }
 
   parsingCtx.filename = filename;
@@ -277,16 +299,20 @@ AFD *AFD_parse(const char *filename, const char sep) {
     }
 
     // only compares first token and each function proceeds to the next line
-    if (strcmp(parsingCtx.token, SIGMA_TAG) == 0) {
-      parseSigma();
-    } else if (strcmp(parsingCtx.token, Q_TAG) == 0) {
-      parseQ();
-    } else if (strcmp(parsingCtx.token, F_TAG) == 0) {
-      parseF();
-    } else if (strcmp(parsingCtx.token, Q0_TAG) == 0) {
-      parseQ0();
-    } else if (strcmp(parsingCtx.token, DELTA_TAG) == 0) {
-      parseDelta();
+    AfdParameter paramToParse = -1;
+    for (int i = 0; i < 5; i++) {
+      if (strcmp(parsingCtx.token, paramsNames[i]) == 0) {
+        paramToParse = i;
+        break;
+      }
+    }
+
+    if (paramToParse >= 0) {
+      bool parsed = parsingFuncs[paramToParse]();
+      if (!parsed) {
+        cancelParsing();
+      }
+      parsingCtx.parsedParams[paramToParse] = parsed;
     }
 
     allParsed = parsingCtx.parsedParams[0] && parsingCtx.parsedParams[1] &&
@@ -295,13 +321,13 @@ AFD *AFD_parse(const char *filename, const char sep) {
   }
 
   if (!allParsed) {
-    printErr("There are missing parameters: ");
+    strcpy(parsingCtx.errorMsg, "There are missing parameters: ");
     for (size_t i = 0; i < 5; i++) {
       if (!parsingCtx.parsedParams[i]) {
-        printfErr("  - %s", paramsNames[i]);
+        sprintf(parsingCtx.errorMsg, "%s  - %s", parsingCtx.errorMsg,
+                paramsNames[i]);
       }
     }
-    printErr("Canceling parsing");
     cancelParsing();
   }
 
