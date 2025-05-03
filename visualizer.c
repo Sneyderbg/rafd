@@ -147,7 +147,7 @@ void updatePhysics(float dt) {
 
 void update(float dt) {
   if (feeding) {
-    if (feedingIdx < strlen(feedingStr)) {
+    if (feedingIdx < (int)strlen(feedingStr)) {
       feedingTimer += dt;
 
       if (feedingTimer >= FEEDING_DELAY) {
@@ -229,7 +229,7 @@ void draw(float dt) {
   BeginMode2D(camera);
 
   char nextInput = '\0';
-  if (feedingIdx < strlen(feedingStr)) {
+  if (feedingIdx < (int)strlen(feedingStr)) {
     nextInput = feedingStr[feedingIdx];
   }
 
@@ -254,7 +254,7 @@ void draw(float dt) {
       Color edgeColor = GRAY;
 
       if (isCurrent) {
-        if (feedingIdx < strlen(feedingStr) &&
+        if (feedingIdx < (int)strlen(feedingStr) &&
             !AFD_isValidInput(afd, nextInput)) {
           edgeColor = RED;
         } else if (nextInput != '\0' && strchr(edgeInputs, nextInput) != NULL) {
@@ -461,7 +461,7 @@ void draw(float dt) {
     strPos = (GetRenderWidth() - strWidth) / 2.;
     DrawTextEx(font, feedingStr, (Vector2){strPos, 20}, FONT_SIZE, 0, GRAY);
     r = 4;
-    c = (feedingIdx < strlen(feedingStr) &&
+    c = (feedingIdx < (int)strlen(feedingStr) &&
                  AFD_isValidInput(afd, feedingStr[feedingIdx])
              ? GREEN
              : RED);
@@ -489,7 +489,9 @@ void startFeeding() {
   feedingIdx = 0;
 }
 
+#ifdef DEBUG
 void drawDebug(float dt) { DrawFPS(10, 10); }
+#endif
 
 void input() {
 
@@ -630,7 +632,9 @@ void run(AFD *afd) {
     update(dt);
     BeginDrawing();
     draw(dt);
+#ifdef DEBUG
     drawDebug(dt);
+#endif
     EndDrawing();
     input();
   }

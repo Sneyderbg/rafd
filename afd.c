@@ -1,16 +1,9 @@
 #include "afd.h"
 #include "utils.h"
 #include <stdbool.h>
-#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-
-bool AFD_new(AFD *afd, char *sigma, int sigma_len, char **Q, int Q_len,
-             char **F, int F_len, char ***delta) {
-  TODO("implement");
-  TODO("also create connections");
-}
 
 bool AFD_isValidState(AFD *afd, char *state) {
   return AFD_getStateIdx(afd, state) != -1;
@@ -25,7 +18,7 @@ int AFD_getStateIdx(AFD *afd, char *state) {
   if (state == NULL)
     return -1;
 
-  for (int i = 0; i < afd->Q.len; i++) {
+  for (size_t i = 0; i < afd->Q.len; i++) {
     if (strcmp(afd->Q.items[i], state) == 0)
       return i;
   }
@@ -38,7 +31,7 @@ int AFD_getInputIdx(AFD *afd, char input) {
     return -1;
   }
 
-  for (int i = 0; i < afd->sigma.len; i++) {
+  for (size_t i = 0; i < afd->sigma.len; i++) {
     if (afd->sigma.items[i] == input)
       return i;
   }
@@ -77,7 +70,7 @@ bool AFD_isStateSuccess(AFD *afd, char *state) {
   if (state == NULL)
     return false;
 
-  for (int i = 0; i < afd->F.len; i++) {
+  for (size_t i = 0; i < afd->F.len; i++) {
     if (strcmp(afd->F.items[i], state) == 0)
       return true;
   }
@@ -144,7 +137,7 @@ void AFD_reset(AFD *afd) {
 
 void AFD_free(AFD *afd) {
   if (afd->connections != NULL) {
-    for (int pos = 0; pos < afd->Q.len * afd->Q.len; pos++) {
+    for (size_t pos = 0; pos < afd->Q.len * afd->Q.len; pos++) {
       if (afd->connections[pos])
         free(afd->connections[pos]);
     }
@@ -152,7 +145,7 @@ void AFD_free(AFD *afd) {
   }
 
   if (afd->delta != NULL) {
-    for (int row = 0; row < afd->Q.len; row++) {
+    for (size_t row = 0; row < afd->Q.len; row++) {
       if (afd->delta[row])
         free(afd->delta[row]);
     }

@@ -55,10 +55,10 @@ bool readLine() {
 bool readToken() {
   if (parsingCtx.tokenIdx >= 0) {
     parsingCtx.token =
-        strtok_s(NULL, parsingCtx.actualSep, &parsingCtx.nextToken);
+        strtok_r(NULL, parsingCtx.actualSep, &parsingCtx.nextToken);
   } else {
     parsingCtx.token =
-        strtok_s(parsingCtx.line, parsingCtx.actualSep, &parsingCtx.nextToken);
+        strtok_r(parsingCtx.line, parsingCtx.actualSep, &parsingCtx.nextToken);
   }
   parsingCtx.tokenIdx++;
   return parsingCtx.token != NULL;
@@ -176,13 +176,13 @@ void parseDelta() {
   size_t numInputs = parsingCtx.parsedAFD->sigma.len;
 
   parsingCtx.parsedAFD->delta = malloc(numStates * sizeof(char *));
-  for (int row = 0; row < numStates; row++) {
+  for (size_t row = 0; row < numStates; row++) {
     parsingCtx.parsedAFD->delta[row] = malloc(numInputs * sizeof(char *));
   }
 
   parsingCtx.parsedAFD->connections =
       malloc(numStates * numStates * sizeof(char *));
-  for (int pos = 0; pos < numStates * numStates; pos++) {
+  for (size_t pos = 0; pos < numStates * numStates; pos++) {
     parsingCtx.parsedAFD->connections[pos] = calloc(
         (numInputs + 1), sizeof(char)); // +1 to allow null terminated str
   }
@@ -192,7 +192,7 @@ void parseDelta() {
   char *stateToken;
   while (qIndex < numStates && readLine()) {
 
-    while (readToken() && parsingCtx.tokenIdx < numInputs) {
+    while (readToken() && parsingCtx.tokenIdx < (int)numInputs) {
 
       int nextStateIdx =
           AFD_getStateIdx(parsingCtx.parsedAFD, parsingCtx.token);
@@ -217,10 +217,10 @@ void parseDelta() {
                 ", expected %zu, found %zu",
                 numStates, qIndex);
       cancelParsing();
-    } else if (parsingCtx.tokenIdx < numInputs - 1) {
+    } else if (parsingCtx.tokenIdx < (int)numInputs - 1) {
       printfErr(DELTA_TAG "must have %zu columns.", numInputs);
       cancelParsing();
-    } else if (parsingCtx.tokenIdx > numInputs) {
+    } else if (parsingCtx.tokenIdx > (int)numInputs) {
       printf("WARNING: Skipping exceding columns at param " DELTA_TAG
              " in file %s\n",
              parsingCtx.filename);
@@ -240,7 +240,7 @@ void parseDelta() {
 }
 
 AFD *AFD_parse(const char *filename, const char sep) {
-  fopen_s(&parsingCtx.file, filename, "r");
+  parsingCtx.file = fopen(filename, "r");
 
   if (!parsingCtx.file) {
     printfErr("%s", strerror(errno));

@@ -2,7 +2,7 @@
 #include "visualizer.h"
 #include <stdbool.h>
 
-int main(int argc, char *argv[]) {
+int main(void) {
 
   AFD *afd = AFD_parse("./def.afdd", ' ');
   run(afd);
