@@ -20,7 +20,8 @@ typedef enum AfdParameter {
   STATES,
   INITIAL_STATE,
   FINAL_STATES,
-  DELTA
+  DELTA,
+  UNKNOWN = 5
 } AfdParameter;
 
 bool parseSigma(void);
@@ -33,7 +34,7 @@ const char *paramsNames[5] = {SIGMA_TAG, Q_TAG, Q0_TAG, F_TAG, DELTA_TAG};
 bool (*parsingFuncs[5])(void) = {&parseSigma, &parseQ, &parseQ0, &parseF,
                                  &parseDelta};
 
-struct {
+typedef struct {
   AFD *parsedAFD;
   FILE *file;
   const char *filename;
@@ -45,7 +46,9 @@ struct {
   char actualSep[2];
   bool parsedParams[5];
   char errorMsg[1024];
-} parsingCtx = {0};
+} PCtx;
+
+PCtx parsingCtx = {0};
 
 #define cancelParsing()                                                        \
   AFD_free(parsingCtx.parsedAFD);                                              \
@@ -88,7 +91,7 @@ bool parseSigma() {
     if (strlen(parsingCtx.token) != 1) {
       sprintf(parsingCtx.errorMsg,
               SIGMA_TAG
-              " contents must have only chars of lenght 1: token = %s",
+              " contents must have only chars of length 1: token = %s",
               parsingCtx.token);
       return false;
     }
@@ -262,6 +265,7 @@ bool parseDelta() {
 }
 
 AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
+  parsingCtx = (PCtx){0}; // reset context
   parsingCtx.file = fopen(filename, "r");
 
   if (!parsingCtx.file) {
@@ -299,7 +303,7 @@ AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
     }
 
     // only compares first token and each function proceeds to the next line
-    AfdParameter paramToParse = -1;
+    AfdParameter paramToParse = UNKNOWN;
     for (int i = 0; i < 5; i++) {
       if (strcmp(parsingCtx.token, paramsNames[i]) == 0) {
         paramToParse = i;
@@ -307,7 +311,7 @@ AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
       }
     }
 
-    if (paramToParse >= 0) {
+    if (paramToParse != UNKNOWN) {
       bool parsed = parsingFuncs[paramToParse]();
       if (!parsed) {
         cancelParsing();
@@ -324,7 +328,7 @@ AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
     strcpy(parsingCtx.errorMsg, "There are missing parameters: ");
     for (size_t i = 0; i < 5; i++) {
       if (!parsingCtx.parsedParams[i]) {
-        sprintf(parsingCtx.errorMsg, "%s  - %s", parsingCtx.errorMsg,
+        sprintf(parsingCtx.errorMsg, "%s,%s", parsingCtx.errorMsg,
                 paramsNames[i]);
       }
     }

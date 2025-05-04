@@ -22,15 +22,14 @@ typedef struct Node {
 // nodes && afd states have the same idxs
 DA_new(nodes, Node);
 
-// TODO: add afd def load functionality
 AFD *afd = NULL;
 
 // GLOBALS
 
 bool running = false;
 
-bool show_help = false;
-int helpHintTimer = 4; // secs
+bool showHelp = false;
+float helpHintTimer = 4; // secs
 bool draggingNode = false;
 int mouseOverNode = -1;
 MouseCursor currCursor = MOUSE_CURSOR_DEFAULT;
@@ -43,7 +42,8 @@ int feedingIdx = 0;
 float feedingTimer = 0;
 bool feedingFinished = false;
 
-char msg[1024];
+char infoMsg[1024];
+char errorMsg[1024];
 float msgTimer = 0;
 
 Vector2 mousePos = {0};
@@ -56,17 +56,27 @@ Texture2D bgTexture;
 
 DA_new(nameLens, float);
 float maxR = 0;
-char *inputsJoined = NULL;
+DA_new(inputsJoined, char);
 
-void init() {
+bool loadFileDef(char *filename) {
   char *error;
-  afd = AFD_parse("./def.afdd", ' ', &error);
-  if (afd == NULL) {
-    printErr(error);
-    exit(1);
+  AFD *newAfd = AFD_parse(filename, ' ', &error);
+
+  if (newAfd == NULL) {
+    strcpy(errorMsg, error);
+    msgTimer = 6;
+    return false;
   }
+
+  if (afd != NULL) {
+    AFD_free(afd);
+  }
+  afd = newAfd;
   AFD_reset(afd);
 
+  // initialize nodes and state name lens
+  nodes.len = 0;
+  nameLens.len = 0;
   for (size_t i = 0; i < afd->Q.len; i++) {
     char *state = afd->Q.items[i];
     Node node = {.pos = (Vector2){GetRandomValue(0, 10) * 10,
@@ -77,9 +87,30 @@ void init() {
 
     };
     DA_append(nodes, node);
-  }
-  inputsJoined = malloc(2 * afd->sigma.len * sizeof(char));
 
+    // measure state names
+    DA_append(nameLens, MeasureTextEx(font, state, FONT_SIZE, 0).x);
+    maxR = fmaxf(maxR, nameLens.items[nameLens.len - 1]);
+  }
+  maxR += 2;
+
+  return true;
+}
+
+void strJoin(char *chars, char sep) {
+  size_t n = strlen(chars);
+  inputsJoined.len = 0;
+  for (size_t i = 0; i < n; i++) {
+    DA_append(inputsJoined, chars[i]);
+    if (i < n - 1) {
+      DA_append(inputsJoined, sep);
+    } else {
+      DA_append(inputsJoined, '\0');
+    }
+  }
+}
+
+void init() {
   InitWindow(WIDTH, HEIGHT, "RAFD");
   SetWindowState(FLAG_WINDOW_RESIZABLE);
   SetTargetFPS(FPS);
@@ -90,18 +121,17 @@ void init() {
   bgTexture = LoadTextureFromImage(bgIm);
   UnloadImage(bgIm);
 
-  for (size_t i = 0; i < afd->Q.len; i++) {
-    char *state = afd->Q.items[i];
-    DA_append(nameLens, MeasureTextEx(font, state, FONT_SIZE, 0).x);
-    maxR = fmaxf(maxR, nameLens.items[nameLens.len - 1]);
-  }
-  maxR += 2;
-
   camera = (Camera2D){
       .offset = (Vector2){GetScreenWidth() / 2., GetScreenHeight() / 2.},
       .rotation = 0,
       .target = {0, 0},
       .zoom = 1.};
+
+  bool loaded = loadFileDef("./def.afdd");
+  if (!loaded) {
+    printErr(errorMsg);
+    exit(1);
+  }
 
   running = true;
 }
@@ -162,7 +192,7 @@ void update(float dt) {
 
         // abort && notify
         if (!validInput) {
-          strncpy(msg,
+          strncpy(errorMsg,
                   TextFormat("Input %c not in sigma", feedingStr[feedingIdx]),
                   1024);
           msgTimer = 4;
@@ -203,8 +233,18 @@ void update(float dt) {
     }
   }
 
-  if (IsWindowResized()) {
-    // TODO: noc
+  if (IsFileDropped()) {
+    FilePathList files = LoadDroppedFiles();
+    if (files.count != 1) {
+      strcpy(errorMsg, "Only one dropped file is supported");
+      msgTimer = 4;
+    } else {
+      if (loadFileDef(files.paths[0])) {
+        strcpy(infoMsg, "File definition loaded!");
+        msgTimer = 4;
+      }
+    }
+    UnloadDroppedFiles(files);
   }
 }
 
@@ -309,22 +349,14 @@ void draw(float dt) {
         DrawTriangle(arrowEnd, Vector2Subtract(arrowEndBack, perp),
                      Vector2Add(arrowEndBack, perp), edgeColor);
 
-        memset(inputsJoined, 0, 2 * afd->sigma.len);
-        size_t numInputs = strlen(edgeInputs);
-
-        for (size_t i = 0; i < numInputs; i++) {
-          inputsJoined[2 * i] = edgeInputs[i];
-          if (i < numInputs - 1) {
-            inputsJoined[2 * i + 1] = ',';
-          }
-        }
+        strJoin(edgeInputs, ',');
 
         Vector2 inputsPos =
             Vector2Add(node.pos, Vector2Scale(Vector2Normalize(centerOffset),
                                               2.8 * maxR + TAG_SEPARATION));
-        Vector2 inputsSize =
-            MeasureTextEx(font, inputsJoined, FONT_SIZE * EDGE_TAG_SCALE, 0);
-        DrawTextEx(font, inputsJoined,
+        Vector2 inputsSize = MeasureTextEx(font, inputsJoined.items,
+                                           FONT_SIZE * EDGE_TAG_SCALE, 0);
+        DrawTextEx(font, inputsJoined.items,
                    Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
                    inputsSize.y, 0, edgeColor);
 
@@ -366,21 +398,13 @@ void draw(float dt) {
 
         DrawTriangle(end, endRight, endLeft, edgeColor);
 
-        memset(inputsJoined, 0, 2 * afd->sigma.len);
-        size_t numInputs = strlen(edgeInputs);
-
-        for (size_t i = 0; i < numInputs; i++) {
-          inputsJoined[2 * i] = edgeInputs[i];
-          if (i < numInputs - 1) {
-            inputsJoined[2 * i + 1] = ',';
-          }
-        }
+        strJoin(edgeInputs, ',');
 
         Vector2 inputsPos =
             Vector2Add(controlPoint, Vector2Scale(dirPerp, TAG_SEPARATION));
-        Vector2 inputsSize =
-            MeasureTextEx(font, inputsJoined, FONT_SIZE * EDGE_TAG_SCALE, 0);
-        DrawTextEx(font, inputsJoined,
+        Vector2 inputsSize = MeasureTextEx(font, inputsJoined.items,
+                                           FONT_SIZE * EDGE_TAG_SCALE, 0);
+        DrawTextEx(font, inputsJoined.items,
                    Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
                    inputsSize.y, 0, edgeColor);
       }
@@ -438,14 +462,22 @@ void draw(float dt) {
     Vector2 pos =
         (Vector2){FONT_SIZE / 2., GetRenderHeight() - (FONT_SIZE * 1.5)};
     DrawTextEx(font, textToShow, pos, FONT_SIZE, 0, BLACK);
-    msg[0] = '\0';
+    errorMsg[0] = '\0';
 
-  } else if (msg[0] != '\0' && msgTimer > 0) {
+  } else if (msgTimer > 0) {
+
     Vector2 pos =
         (Vector2){FONT_SIZE / 2., GetRenderHeight() - FONT_SIZE * 1.5};
+    if (errorMsg[0] != '\0') {
+      DrawTextEx(font, TextFormat("Error: %s", errorMsg), pos, FONT_SIZE, 0,
+                 (Color){200, 0, 0, fminf(255, 255 * msgTimer)});
+      pos.y -= FONT_SIZE + 2;
+    }
+    if (infoMsg[0] != '\0') {
+      DrawTextEx(font, infoMsg, pos, FONT_SIZE, 0,
+                 (Color){0, 100, 200, fminf(255, 255 * msgTimer)});
+    }
     msgTimer -= dt;
-    DrawTextEx(font, TextFormat("Error: %s", msg), pos, FONT_SIZE, 0,
-               (Color){200, 0, 0, fminf(255, 255 * msgTimer)});
   }
 
   // draw feeding progress
@@ -481,7 +513,29 @@ void draw(float dt) {
     DrawTextEx(font, finishedMsg, (Vector2){(GetRenderWidth() - msgW) / 2., 20},
                FONT_SIZE, 0, BLACK);
   }
-};
+
+  if (helpHintTimer > 0) {
+
+    helpHintTimer -= dt;
+    const char *hint = "Hold H to show help";
+    DrawTextEx(
+        font, hint,
+        (Vector2){
+            (GetRenderWidth() - MeasureTextEx(font, hint, FONT_SIZE, 0).x) / 2,
+            80},
+        FONT_SIZE, 0, ColorAlpha(BLACK, helpHintTimer));
+  }
+
+  if (showHelp) {
+    DrawRectangleRec((Rectangle){0, 0, GetRenderWidth(), GetRenderHeight()},
+                     (Color){0, 0, 0, 128});
+    Vector2 helpSize = MeasureTextEx(font, HELP_INFO, FONT_SIZE, 1);
+    DrawTextEx(font, HELP_INFO,
+               (Vector2){(GetRenderWidth() - helpSize.x) / 2,
+                         (GetRenderHeight() - helpSize.y) / 2},
+               FONT_SIZE, 0, BLACK);
+  }
+}
 
 void stopFeeding() {
   feeding = false;
@@ -609,16 +663,23 @@ void input() {
       IsKeyPressed(KEY_V)) {
     strncpy(feedingStr, GetClipboardText(), MAX_FEEDING_STR_LEN);
   }
+
+  if (IsKeyPressed(KEY_H)) {
+    showHelp = true;
+  }
+  if (IsKeyReleased(KEY_H)) {
+    showHelp = false;
+  }
 }
 
 void closeVis() {
   if (afd != NULL) {
-    free(afd);
+    AFD_free(afd);
   }
   UnloadTexture(bgTexture);
   UnloadShader(bgShader);
   UnloadFont(font);
-  free(inputsJoined);
+  DA_free(inputsJoined);
   DA_free(nodes);
   DA_free(nameLens);
   CloseWindow();

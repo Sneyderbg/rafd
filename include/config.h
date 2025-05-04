@@ -7,12 +7,15 @@
 #define CAM_ZOOM_FACTOR 1.2
 
 #define HELP_INFO                                                              \
-  " \
-H            - Show this help \n \
-Enter        - Start typing a new input for the afd\n \
-Ctrl + Enter - Start typing in live mode (feed as you type)\n \
-Esc          - Cancel typing\n \
-Left click   - Drag nodes\n \
+  "\
+H            - Show this help\n\
+Enter        - Start typing a new input for the afd\n\
+Ctrl + Enter - Start typing in live mode (feed as you type)\n\
+Esc          - Cancel typing\n\
+Left click   - Drag nodes\n\
+Middle click - Move view\n\
+\n\
+Drag&Drop files to load!\n\
 "
 
 #define FONT_PATH "./fonts/CodeSquaredRegular-AYRg.ttf"
