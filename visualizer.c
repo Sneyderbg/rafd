@@ -9,6 +9,9 @@
 #include <stddef.h>
 #include <stdlib.h>
 #include <string.h>
+#ifdef PLATFORM_WEB
+#include <emscripten/emscripten.h>
+#endif /* ifdef PLATFORM_WEB */
 
 #define MAX_FEEDING_STR_LEN 256
 
@@ -26,6 +29,8 @@ AFD *afd = NULL;
 
 // GLOBALS
 
+int INITIAL_WIDTH = WIDTH;
+int INITIAL_HEIGHT = HEIGHT;
 bool running = false;
 
 bool showHelp = false;
@@ -47,6 +52,7 @@ char errorMsg[1024];
 float msgTimer = 0;
 
 Vector2 mousePos = {0};
+Vector2 prevMousePos = {0};
 Vector2 mouseWorldPos = {0};
 
 Camera2D camera = {0};
@@ -111,12 +117,20 @@ void strJoin(char *chars, char sep) {
 }
 
 void init() {
+#ifdef PLATFORM_WEB
+  emscripten_get_screen_size(&INITIAL_WIDTH, &INITIAL_HEIGHT);
+  InitWindow(INITIAL_WIDTH, INITIAL_HEIGHT, "RAFD");
+#else
   InitWindow(WIDTH, HEIGHT, "RAFD");
+#endif /* ifdef PLATFORM_WEB */
   SetWindowState(FLAG_WINDOW_RESIZABLE);
-  SetTargetFPS(FPS);
   SetExitKey(-1);
   font = LoadFont("./fonts/CodeSquaredRegular-AYRg.ttf");
+#ifdef PLATFORM_WEB
+  bgShader = LoadShader(NULL, "./shaders/bgweb.frag");
+#else
   bgShader = LoadShader(NULL, "./shaders/bg.frag");
+#endif /* ifdef PLATFORM_WEB */
   Image bgIm = GenImageColor(WIDTH, HEIGHT, RAYWHITE);
   bgTexture = LoadTextureFromImage(bgIm);
   UnloadImage(bgIm);
@@ -127,16 +141,20 @@ void init() {
       .target = {0, 0},
       .zoom = 1.};
 
-  bool loaded = loadFileDef("./def.afdd");
+  bool loaded = loadFileDef("def.afdd");
   if (!loaded) {
-    printErr(errorMsg);
-    exit(1);
+    msgTimer = 6;
   }
 
   running = true;
 }
 
 void updatePhysics(float dt) {
+
+  if (afd == NULL) {
+    return;
+  }
+
   for (size_t nodeIdx = 0; nodeIdx < nodes.len; nodeIdx++) {
     Node *node = &nodes.items[nodeIdx];
     for (size_t otherNodeIdx = nodeIdx + 1; otherNodeIdx < nodes.len;
@@ -182,7 +200,7 @@ void updatePhysics(float dt) {
 }
 
 void update(float dt) {
-  if (feeding) {
+  if (afd != NULL && feeding) {
     if (feedingIdx < (int)strlen(feedingStr)) {
       feedingTimer += dt;
 
@@ -207,7 +225,16 @@ void update(float dt) {
     }
   }
 
+  prevMousePos = mousePos;
+#ifdef PLATFORM_WEB
+  // calculate mousePos based on internal size and actual canvas size
+  mousePos = Vector2Multiply(
+      GetMousePosition(), (Vector2){1. * GetRenderWidth() / INITIAL_WIDTH,
+                                    1. * GetRenderHeight() / INITIAL_HEIGHT});
+#else
   mousePos = GetMousePosition();
+#endif /* ifdef PLATFORM_WEB */
+
   if (CheckCollisionPointRec(
           mousePos, (Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()})) {
     mouseWorldPos = GetScreenToWorld2D(mousePos, camera);
@@ -246,6 +273,10 @@ void update(float dt) {
     }
     UnloadDroppedFiles(files);
   }
+
+  if (IsWindowResized()) {
+    camera.offset = (Vector2){GetScreenWidth() / 2., GetScreenHeight() / 2.};
+  }
 }
 
 void draw(float dt) {
@@ -272,171 +303,180 @@ void draw(float dt) {
     EndShaderMode();
   }
 
-  BeginMode2D(camera);
+  if (afd != NULL) {
 
-  char nextInput = '\0';
-  if (feedingIdx < (int)strlen(feedingStr)) {
-    nextInput = feedingStr[feedingIdx];
-  }
+    BeginMode2D(camera);
 
-  for (size_t stateIdx = 0; stateIdx < nodes.len; stateIdx++) {
-    Node node = nodes.items[stateIdx];
-    char *state = node.state;
-    bool isCurrent = AFD_isCurrent(afd, state);
-    bool isPrevious = AFD_isPrevious(afd, state);
-    bool isNext = AFD_isNext(afd, state, nextInput);
+    char nextInput = '\0';
+    if (feedingIdx < (int)strlen(feedingStr)) {
+      nextInput = feedingStr[feedingIdx];
+    }
 
-    // draw edges
-    for (size_t otherStateIdx = 0; otherStateIdx < nodes.len; otherStateIdx++) {
-      Node otherNode = nodes.items[otherStateIdx];
-      char *edgeInputs = AFD_getConnection(afd, stateIdx, otherStateIdx);
-      int inputsLen = strlen(edgeInputs);
+    for (size_t stateIdx = 0; stateIdx < nodes.len; stateIdx++) {
+      Node node = nodes.items[stateIdx];
+      char *state = node.state;
+      bool isCurrent = AFD_isCurrent(afd, state);
+      bool isPrevious = AFD_isPrevious(afd, state);
+      bool isNext = AFD_isNext(afd, state, nextInput);
 
-      // skip non connected nodes
-      if (inputsLen == 0) {
-        continue;
-      }
+      // draw edges
+      for (size_t otherStateIdx = 0; otherStateIdx < nodes.len;
+           otherStateIdx++) {
+        Node otherNode = nodes.items[otherStateIdx];
+        char *edgeInputs = AFD_getConnection(afd, stateIdx, otherStateIdx);
+        int inputsLen = strlen(edgeInputs);
 
-      Color edgeColor = GRAY;
-
-      if (isCurrent) {
-        if (feedingIdx < (int)strlen(feedingStr) &&
-            !AFD_isValidInput(afd, nextInput)) {
-          edgeColor = RED;
-        } else if (nextInput != '\0' && strchr(edgeInputs, nextInput) != NULL) {
-          edgeColor = GREEN;
+        // skip non connected nodes
+        if (inputsLen == 0) {
+          continue;
         }
-      }
 
-      bool sameNode = strcmp(state, otherNode.state) == 0;
+        Color edgeColor = GRAY;
 
-      // draw self arrow
-      if (sameNode) {
-        Vector2 centerOffset = {0}, diff, arrowEnd, arrowEndBack, dir, perp;
-        float angle, start, end, endRad;
-
-        // accumulate inverted directions to other nodes
-        for (size_t i = 0; i < nodes.len; i++) {
-          if (stateIdx != i) {
-            diff = Vector2Subtract(node.pos, nodes.items[i].pos);
-            centerOffset = Vector2Add(centerOffset, diff);
+        if (isCurrent) {
+          if (feedingIdx < (int)strlen(feedingStr) &&
+              !AFD_isValidInput(afd, nextInput)) {
+            edgeColor = RED;
+          } else if (nextInput != '\0' &&
+                     strchr(edgeInputs, nextInput) != NULL) {
+            edgeColor = GREEN;
           }
         }
 
-        centerOffset = Vector2Scale(Vector2Normalize(centerOffset), 1.8 * maxR);
+        bool sameNode = strcmp(state, otherNode.state) == 0;
 
-        angle = atan2f(centerOffset.y, centerOffset.x) * RAD2DEG;
-        start = fmodf((angle + 225 + PADDING_FROM_NODE), 360);
-        end = start + 270 - 2 * PADDING_FROM_NODE;
+        // draw self arrow
+        if (sameNode) {
+          Vector2 centerOffset = {0}, diff, arrowEnd, arrowEndBack, dir, perp;
+          float angle, start, end, endRad;
 
-        DrawRing(Vector2Add(node.pos, centerOffset), maxR - 2, maxR, start, end,
-                 20, edgeColor);
-        endRad = end * DEG2RAD;
+          // accumulate inverted directions to other nodes
+          for (size_t i = 0; i < nodes.len; i++) {
+            if (stateIdx != i) {
+              diff = Vector2Subtract(node.pos, nodes.items[i].pos);
+              centerOffset = Vector2Add(centerOffset, diff);
+            }
+          }
 
-        arrowEnd = Vector2Add(node.pos, centerOffset);
-        arrowEnd = Vector2Add(
-            arrowEnd, (Vector2){maxR * cosf(endRad), maxR * sinf(endRad)});
+          centerOffset =
+              Vector2Scale(Vector2Normalize(centerOffset), 1.8 * maxR);
 
-        end -= TRIANGLE_SIZE;
-        endRad = (end)*DEG2RAD;
+          angle = atan2f(centerOffset.y, centerOffset.x) * RAD2DEG;
+          start = fmodf((angle + 225 + PADDING_FROM_NODE), 360);
+          end = start + 270 - 2 * PADDING_FROM_NODE;
 
-        arrowEndBack = Vector2Add(node.pos, centerOffset);
-        arrowEndBack = Vector2Add(
-            arrowEndBack, (Vector2){maxR * cosf(endRad), maxR * sinf(endRad)});
+          DrawRing(Vector2Add(node.pos, centerOffset), maxR - 2, maxR, start,
+                   end, 20, edgeColor);
+          endRad = end * DEG2RAD;
 
-        dir = Vector2Normalize(Vector2Subtract(arrowEnd, arrowEndBack));
-        perp = Vector2Scale((Vector2){-dir.y, dir.x}, TRIANGLE_SIZE * .5);
-        DrawTriangle(arrowEnd, Vector2Subtract(arrowEndBack, perp),
-                     Vector2Add(arrowEndBack, perp), edgeColor);
+          arrowEnd = Vector2Add(node.pos, centerOffset);
+          arrowEnd = Vector2Add(
+              arrowEnd, (Vector2){maxR * cosf(endRad), maxR * sinf(endRad)});
 
-        strJoin(edgeInputs, ',');
+          end -= TRIANGLE_SIZE;
+          endRad = (end)*DEG2RAD;
 
-        Vector2 inputsPos =
-            Vector2Add(node.pos, Vector2Scale(Vector2Normalize(centerOffset),
-                                              2.8 * maxR + TAG_SEPARATION));
-        Vector2 inputsSize = MeasureTextEx(font, inputsJoined.items,
-                                           FONT_SIZE * EDGE_TAG_SCALE, 0);
-        DrawTextEx(font, inputsJoined.items,
-                   Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
-                   inputsSize.y, 0, edgeColor);
+          arrowEndBack = Vector2Add(node.pos, centerOffset);
+          arrowEndBack =
+              Vector2Add(arrowEndBack,
+                         (Vector2){maxR * cosf(endRad), maxR * sinf(endRad)});
 
-      } else { // draw other arrows
+          dir = Vector2Normalize(Vector2Subtract(arrowEnd, arrowEndBack));
+          perp = Vector2Scale((Vector2){-dir.y, dir.x}, TRIANGLE_SIZE * .5);
+          DrawTriangle(arrowEnd, Vector2Subtract(arrowEndBack, perp),
+                       Vector2Add(arrowEndBack, perp), edgeColor);
 
-        // TODO: maybe compute shader?
-        Vector2 start, end, dir, dirPerp, controlPoint, endBack, endRight,
-            endLeft;
-        float padding;
+          strJoin(edgeInputs, ',');
 
-        // draw edge line
-        start = node.pos;
-        end = otherNode.pos;
-        dir = Vector2Subtract(end, start);
-        dir = Vector2Normalize(dir);
-        padding = maxR + PADDING_FROM_NODE;
+          Vector2 inputsPos =
+              Vector2Add(node.pos, Vector2Scale(Vector2Normalize(centerOffset),
+                                                2.8 * maxR + TAG_SEPARATION));
+          Vector2 inputsSize = MeasureTextEx(font, inputsJoined.items,
+                                             FONT_SIZE * EDGE_TAG_SCALE, 0);
+          DrawTextEx(
+              font, inputsJoined.items,
+              Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
+              inputsSize.y, 0, edgeColor);
 
-        start = Vector2Add(start, Vector2Scale(dir, padding));
-        end = Vector2Subtract(end, Vector2Scale(dir, padding));
-        controlPoint =
-            Vector2Add(Vector2Scale(Vector2Subtract(end, start), .5), start);
-        dirPerp = (Vector2){dir.y, -dir.x};
-        controlPoint =
-            Vector2Add(controlPoint, Vector2Scale(dirPerp, SEP_FACTOR));
+        } else { // draw other arrows
 
-        start = Vector2Add(start, Vector2Scale(dirPerp, SEP_FACTOR * .5));
-        end = Vector2Add(end, Vector2Scale(dirPerp, SEP_FACTOR * .5));
+          // TODO: maybe compute shader?
+          Vector2 start, end, dir, dirPerp, controlPoint, endBack, endRight,
+              endLeft;
+          float padding;
 
-        Vector2 points[] = {start, controlPoint, end};
+          // draw edge line
+          start = node.pos;
+          end = otherNode.pos;
+          dir = Vector2Subtract(end, start);
+          dir = Vector2Normalize(dir);
+          padding = maxR + PADDING_FROM_NODE;
 
-        DrawSplineBezierQuadratic(points, 3, THICKNESS, edgeColor);
+          start = Vector2Add(start, Vector2Scale(dir, padding));
+          end = Vector2Subtract(end, Vector2Scale(dir, padding));
+          controlPoint =
+              Vector2Add(Vector2Scale(Vector2Subtract(end, start), .5), start);
+          dirPerp = (Vector2){dir.y, -dir.x};
+          controlPoint =
+              Vector2Add(controlPoint, Vector2Scale(dirPerp, SEP_FACTOR));
 
-        dir = Vector2Normalize(Vector2Subtract(end, controlPoint));
-        endBack = Vector2Subtract(end, Vector2Scale(dir, TRIANGLE_SIZE));
-        endRight =
-            Vector2Add(endBack, Vector2Scale(dirPerp, TRIANGLE_SIZE * 0.5));
-        endLeft = Vector2Subtract(endBack,
-                                  Vector2Scale(dirPerp, TRIANGLE_SIZE * 0.5));
+          start = Vector2Add(start, Vector2Scale(dirPerp, SEP_FACTOR * .5));
+          end = Vector2Add(end, Vector2Scale(dirPerp, SEP_FACTOR * .5));
 
-        DrawTriangle(end, endRight, endLeft, edgeColor);
+          Vector2 points[] = {start, controlPoint, end};
 
-        strJoin(edgeInputs, ',');
+          DrawSplineBezierQuadratic(points, 3, THICKNESS, edgeColor);
 
-        Vector2 inputsPos =
-            Vector2Add(controlPoint, Vector2Scale(dirPerp, TAG_SEPARATION));
-        Vector2 inputsSize = MeasureTextEx(font, inputsJoined.items,
-                                           FONT_SIZE * EDGE_TAG_SCALE, 0);
-        DrawTextEx(font, inputsJoined.items,
-                   Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
-                   inputsSize.y, 0, edgeColor);
+          dir = Vector2Normalize(Vector2Subtract(end, controlPoint));
+          endBack = Vector2Subtract(end, Vector2Scale(dir, TRIANGLE_SIZE));
+          endRight =
+              Vector2Add(endBack, Vector2Scale(dirPerp, TRIANGLE_SIZE * 0.5));
+          endLeft = Vector2Subtract(endBack,
+                                    Vector2Scale(dirPerp, TRIANGLE_SIZE * 0.5));
+
+          DrawTriangle(end, endRight, endLeft, edgeColor);
+
+          strJoin(edgeInputs, ',');
+
+          Vector2 inputsPos =
+              Vector2Add(controlPoint, Vector2Scale(dirPerp, TAG_SEPARATION));
+          Vector2 inputsSize = MeasureTextEx(font, inputsJoined.items,
+                                             FONT_SIZE * EDGE_TAG_SCALE, 0);
+          DrawTextEx(
+              font, inputsJoined.items,
+              Vector2Subtract(inputsPos, Vector2Scale(inputsSize, 1 / 2.)),
+              inputsSize.y, 0, edgeColor);
+        }
+      }
+
+      // draw nodes
+      Color nodeColor;
+      if (isCurrent && node.isTarget) {
+        nodeColor = GREEN;
+      } else if (isCurrent) {
+        nodeColor = !feedingFinished ? ColorBrightness(RED, 0.6) : RED;
+      } else if (isPrevious) {
+        nodeColor = ColorBrightness(BLACK, 0.5);
+      } else {
+        nodeColor = (Color){200, 200, 200, 255};
+      }
+
+      Vector2 textPos = Vector2Subtract(
+          node.pos,
+          Vector2Scale((Vector2){nameLens.items[stateIdx], FONT_SIZE}, 1 / 2.));
+      DrawCircleV(node.pos, maxR, nodeColor);
+      if (isNext) {
+        DrawRing(node.pos, maxR - 4, maxR - 2, 0, 360, 20, GREEN);
+      }
+      DrawTextEx(font, state, textPos, FONT_SIZE, 0, BLACK);
+
+      if (node.isTarget) {
+        DrawRing(node.pos, maxR * 1.2, maxR * 1.3, 0, 360, 0, GRAY);
       }
     }
 
-    // draw nodes
-    Color nodeColor;
-    if (isCurrent && node.isTarget) {
-      nodeColor = GREEN;
-    } else if (isCurrent) {
-      nodeColor = !feedingFinished ? ColorBrightness(RED, 0.6) : RED;
-    } else if (isPrevious) {
-      nodeColor = ColorBrightness(BLACK, 0.5);
-    } else {
-      nodeColor = (Color){200, 200, 200, 255};
-    }
-
-    Vector2 textPos = Vector2Subtract(
-        node.pos,
-        Vector2Scale((Vector2){nameLens.items[stateIdx], FONT_SIZE}, 1 / 2.));
-    DrawCircleV(node.pos, maxR, nodeColor);
-    if (isNext) {
-      DrawRing(node.pos, maxR - 4, maxR - 2, 0, 360, 20, GREEN);
-    }
-    DrawTextEx(font, state, textPos, FONT_SIZE, 0, BLACK);
-
-    if (node.isTarget) {
-      DrawRing(node.pos, maxR * 1.2, maxR * 1.3, 0, 360, 0, GRAY);
-    }
+    EndMode2D();
   }
-
-  EndMode2D();
 
   // gui
 
@@ -481,7 +521,7 @@ void draw(float dt) {
   }
 
   // draw feeding progress
-  if (feeding || (liveMode && strlen(feedingStr) > 0)) {
+  if (afd != NULL && (feeding || (liveMode && strlen(feedingStr) > 0))) {
     int cursorBeforeFeed, cursorAfterFeed, strCursorOffset, strWidth, strPos, r;
     Color c;
 
@@ -505,9 +545,7 @@ void draw(float dt) {
              : RED);
     DrawCircleV((Vector2){strPos + strCursorOffset, 20 + FONT_SIZE + r * 2}, r,
                 c);
-  }
-
-  else if (feedingFinished) {
+  } else if (feedingFinished) {
     const char *finishedMsg = "Feed finished";
     int msgW = MeasureTextEx(font, finishedMsg, FONT_SIZE, 0).x;
     DrawTextEx(font, finishedMsg, (Vector2){(GetRenderWidth() - msgW) / 2., 20},
@@ -527,13 +565,14 @@ void draw(float dt) {
   }
 
   if (showHelp) {
+    const float scaledSize = 1. * FONT_SIZE * GetScreenWidth() / INITIAL_WIDTH;
     DrawRectangleRec((Rectangle){0, 0, GetRenderWidth(), GetRenderHeight()},
                      (Color){0, 0, 0, 128});
-    Vector2 helpSize = MeasureTextEx(font, HELP_INFO, FONT_SIZE, 1);
+    Vector2 helpSize = MeasureTextEx(font, HELP_INFO, scaledSize, 1);
     DrawTextEx(font, HELP_INFO,
                (Vector2){(GetRenderWidth() - helpSize.x) / 2,
                          (GetRenderHeight() - helpSize.y) / 2},
-               FONT_SIZE, 0, BLACK);
+               scaledSize, 0, BLACK);
   }
 }
 
@@ -550,16 +589,18 @@ void startFeeding() {
 }
 
 #ifdef DEBUG
-void drawDebug(float dt) { DrawFPS(10, 10); }
+void drawDebug() { DrawFPS(10, 10); }
 #endif
 
 void input() {
 
+#ifndef PLATFORM_WEB
   // reload shaders
   if (IsKeyPressed(KEY_R)) {
     UnloadShader(bgShader);
     bgShader = LoadShader(NULL, "./shaders/bg.frag");
   }
+#endif
 
   // quit
   if (!typingStr && IsKeyPressed(KEY_Q))
@@ -581,10 +622,16 @@ void input() {
     }
   }
 
+  int k = GetKeyPressed();
+  if (k != 0) {
+    printf("key pressed: %d\n", k);
+  }
+
   // move camera
   if (IsMouseButtonDown(MOUSE_BUTTON_MIDDLE)) {
     camera.target = Vector2Subtract(
-        camera.target, Vector2Scale(GetMouseDelta(), 1.0 / camera.zoom));
+        camera.target, Vector2Scale(Vector2Subtract(mousePos, prevMousePos),
+                                    1.0 / camera.zoom));
   }
 
   // zoom
@@ -685,27 +732,37 @@ void closeVis() {
   CloseWindow();
 }
 
+float fixedDt = 1.0 / PHYSICS_FPS;
+float dtAcc = 0.;
+void loop() {
+  float dt = GetFrameTime();
+  dtAcc += fixedDt;
+
+  while (dtAcc >= fixedDt) {
+    updatePhysics(fixedDt);
+    dtAcc -= fixedDt;
+  }
+
+  input();
+  update(dt);
+  BeginDrawing();
+  draw(dt);
+#ifdef DEBUG
+  drawDebug();
+#endif
+  EndDrawing();
+}
+
 void runVis() {
   init();
-  float fixedDt = 1.0 / PHYSICS_FPS;
-  float dtAcc = 0.;
+
+#ifdef PLATFORM_WEB
+  emscripten_set_main_loop(loop, 0, false);
+#else
+  SetTargetFPS(FPS);
   while (running && !WindowShouldClose()) {
-    float dt = GetFrameTime();
-    dtAcc += fixedDt;
-
-    while (dtAcc >= fixedDt) {
-      updatePhysics(fixedDt);
-      dtAcc -= fixedDt;
-    }
-
-    update(dt);
-    BeginDrawing();
-    draw(dt);
-#ifdef DEBUG
-    drawDebug(dt);
-#endif
-    EndDrawing();
-    input();
+    loop();
   }
   closeVis();
+#endif /* ifdef WEB */
 }

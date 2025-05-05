@@ -2,7 +2,6 @@
 #include <stdbool.h>
 
 int main(void) {
-
   runVis();
   return 0;
 }

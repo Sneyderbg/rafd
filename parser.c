@@ -40,10 +40,9 @@ typedef struct {
   const char *filename;
   char line[MAX_LINE_LENGTH];
   size_t lineNumber;
-  char *nextToken;
   char *token;
   int tokenIdx;
-  char actualSep[2];
+  char actualSeps[3];
   bool parsedParams[5];
   char errorMsg[1024];
 } PCtx;
@@ -59,7 +58,6 @@ PCtx parsingCtx = {0};
   return NULL
 
 bool readLine() {
-  parsingCtx.nextToken = NULL;
   parsingCtx.tokenIdx = -1;
   parsingCtx.lineNumber++;
   char *res = fgets(parsingCtx.line, MAX_LINE_LENGTH, parsingCtx.file);
@@ -68,11 +66,9 @@ bool readLine() {
 
 bool readToken() {
   if (parsingCtx.tokenIdx >= 0) {
-    parsingCtx.token =
-        strtok_r(NULL, parsingCtx.actualSep, &parsingCtx.nextToken);
+    parsingCtx.token = strtok(NULL, parsingCtx.actualSeps);
   } else {
-    parsingCtx.token =
-        strtok_r(parsingCtx.line, parsingCtx.actualSep, &parsingCtx.nextToken);
+    parsingCtx.token = strtok(parsingCtx.line, parsingCtx.actualSeps);
   }
   parsingCtx.tokenIdx++;
   return parsingCtx.token != NULL;
@@ -276,8 +272,9 @@ AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
   parsingCtx.filename = filename;
   parsingCtx.parsedAFD = calloc(1, sizeof(AFD));
 
-  parsingCtx.actualSep[0] = sep;
-  parsingCtx.actualSep[1] = '\n';
+  parsingCtx.actualSeps[0] = sep;
+  parsingCtx.actualSeps[1] = '\r';
+  parsingCtx.actualSeps[2] = '\n';
 
   // parse params
   bool allParsed = false;
@@ -328,10 +325,12 @@ AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
     strcpy(parsingCtx.errorMsg, "There are missing parameters: ");
     for (size_t i = 0; i < 5; i++) {
       if (!parsingCtx.parsedParams[i]) {
-        sprintf(parsingCtx.errorMsg, "%s,%s", parsingCtx.errorMsg,
-                paramsNames[i]);
+        strcat(parsingCtx.errorMsg, paramsNames[i]);
+        strcat(parsingCtx.errorMsg, ",");
       }
     }
+    parsingCtx.errorMsg[strlen(parsingCtx.errorMsg) - 1] =
+        '\0'; // erase last comma
     cancelParsing();
   }
 

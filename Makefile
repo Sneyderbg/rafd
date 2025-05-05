@@ -1,6 +1,7 @@
 RAYLIB_PATH ?= ../raylib
 OBJECTS := $(patsubst %.c,%.o,$(wildcard *.c))
 
+CC = clang
 INCLUDE_DIRS := -I./ -I./include/ -I$(RAYLIB_PATH)/src
 LDFLAGS := -L$(RAYLIB_PATH)/src
 LDLIBS := -lraylib
@@ -16,7 +17,7 @@ debug: CFLAGS += -g -O0 -DDEBUG
 release: CFLAGS += -O3
 debug release: LDLIBS += -lgdi32 -lopengl32 -lwinmm
 debug release: CFLAGS += -DPLATFORM_DESKTOP
-debug release: $(OBJECTS) 
+debug release: $(OBJECTS)
 ifeq (, $(wildcard $(BUILD_DIR)))
 	mkdir $(BUILD_DIR)
 	cp -r fonts $(BUILD_DIR)
@@ -25,13 +26,19 @@ ifeq (, $(wildcard $(BUILD_DIR)))
 endif
 	clang $(CFLAGS) -o $(BUILD_DIR)/$(OUT_NAME).$(OUT_EXT) $^ $(LDFLAGS) $(LDLIBS)
 
-web: CFLAGS += -O3 -DPLATFORM_WEB
+web: CC := emcc
+web: LDLIBS := -lraylib.web
+web: LDFLAGS += -sUSE_GLFW=3
+web: CFLAGS += -DPLATFORM_WEB -DDEBUG
 web: OUT_EXT := html
-web:
-	echo "todo"
+web: $(OBJECTS) 
+ifeq (, $(wildcard $(BUILD_DIR)))
+	mkdir $(BUILD_DIR)
+endif
+	emcc $(CFLAGS) -o $(BUILD_DIR)/$(OUT_NAME).$(OUT_EXT) $^ $(LDFLAGS) $(LDLIBS) --shell-file $(RAYLIB_PATH)/src/minshell.html --preload-file fonts --preload-file shaders --preload-file def.afdd
 
 %.o: %.c
-	clang $(CFLAGS) $(INCLUDE_DIRS) -c -o $@ $<
+	$(CC) $(CFLAGS) $(INCLUDE_DIRS) -c -o $@ $<
 
 run: $(BUILD_DIR)/$(OUT_NAME).$(OUT_EXT)
 	$^
