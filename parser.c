@@ -50,7 +50,8 @@ typedef struct {
 PCtx parsingCtx = {0};
 
 #define cancelParsing()                                                        \
-  AFD_free(parsingCtx.parsedAFD);                                              \
+  if (parsingCtx.parsedAFD)                                                    \
+    AFD_free(parsingCtx.parsedAFD);                                            \
   fclose(parsingCtx.file);                                                     \
   if (errorMsg != NULL) {                                                      \
     *errorMsg = parsingCtx.errorMsg;                                           \

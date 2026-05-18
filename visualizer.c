@@ -58,19 +58,33 @@ Vector2 mouseWorldPos = {0};
 Camera2D camera = {0};
 Font font;
 Shader bgShader;
+Shader nodeShader;
 Texture2D bgTexture;
 
 DA_new(nameLens, float);
 float maxR = 0;
 DA_new(inputsJoined, char);
 
+void showErrMsg(char *msg, float secs) {
+  if (msgTimer > 0)
+    infoMsg[0] = '\0';
+  strcpy(errorMsg, msg);
+  msgTimer = secs;
+}
+
+void showInfoMsg(char *msg, float secs) {
+  if (msgTimer > 0)
+    errorMsg[0] = '\0';
+  strcpy(infoMsg, msg);
+  msgTimer = secs;
+}
+
 bool loadFileDef(char *filename) {
   char *error;
   AFD *newAfd = AFD_parse(filename, ' ', &error);
 
   if (newAfd == NULL) {
-    strcpy(errorMsg, error);
-    msgTimer = 6;
+    showErrMsg(error, 6);
     return false;
   }
 
@@ -103,6 +117,31 @@ bool loadFileDef(char *filename) {
   return true;
 }
 
+void tryLoadFileDropped() {
+
+  FilePathList files = LoadDroppedFiles();
+  bool fileLoaded = false;
+  for (size_t i = 0; i < files.count; i++) {
+    if (FileExists(files.paths[i]) && loadFileDef(files.paths[i])) {
+      showInfoMsg("File definition loaded!", 4);
+      fileLoaded = true;
+    }
+  }
+  if (!fileLoaded) {
+    // There is an issue where XWayland uses last clipboard item instead of
+    // the actual dropped file, in the case of cliphist it fixes itself
+    // just by cleaning the clipboard history
+    showErrMsg("Can't load any file, check logs", 4);
+    fprintf(stderr, "Can't load any of these dropped files:\n");
+    for (size_t i = 0; i < files.count; i++) {
+      fprintf(stderr, "   %zu -> %s\n", i, files.paths[i]);
+    }
+    fprintf(stderr,
+            "   NOTE: if you're using XWayland (X11 under wayland) it's "
+            "probably you're clipboard messing with the dropped files.");
+  }
+  UnloadDroppedFiles(files);
+}
 void strJoin(char *chars, char sep) {
   size_t n = strlen(chars);
   inputsJoined.len = 0;
@@ -124,13 +163,10 @@ void init() {
   InitWindow(WIDTH, HEIGHT, "RAFD");
 #endif /* ifdef PLATFORM_WEB */
   SetWindowState(FLAG_WINDOW_RESIZABLE);
-  SetExitKey(-1);
-  font = LoadFont("./fonts/CodeSquaredRegular-AYRg.ttf");
-#ifdef PLATFORM_WEB
-  bgShader = LoadShader(NULL, "./shaders/bgweb.frag");
-#else
-  bgShader = LoadShader(NULL, "./shaders/bg.frag");
-#endif /* ifdef PLATFORM_WEB */
+  SetExitKey(0);
+  font = LoadFont(FONT);
+  bgShader = LoadShader(NULL, BG_SHADER);
+  nodeShader = LoadShader(NULL, NODE_SHADER);
   Image bgIm = GenImageColor(WIDTH, HEIGHT, RAYWHITE);
   bgTexture = LoadTextureFromImage(bgIm);
   UnloadImage(bgIm);
@@ -261,17 +297,7 @@ void update(float dt) {
   }
 
   if (IsFileDropped()) {
-    FilePathList files = LoadDroppedFiles();
-    if (files.count != 1) {
-      strcpy(errorMsg, "Only one dropped file is supported");
-      msgTimer = 4;
-    } else {
-      if (loadFileDef(files.paths[0])) {
-        strcpy(infoMsg, "File definition loaded!");
-        msgTimer = 4;
-      }
-    }
-    UnloadDroppedFiles(files);
+    tryLoadFileDropped();
   }
 
   if (IsWindowResized()) {
@@ -456,23 +482,50 @@ void draw(float dt) {
       } else if (isCurrent) {
         nodeColor = !feedingFinished ? ColorBrightness(RED, 0.6) : RED;
       } else if (isPrevious) {
-        nodeColor = ColorBrightness(BLACK, 0.5);
+        nodeColor = ColorBrightness(BLACK, 0.4);
       } else {
         nodeColor = (Color){200, 200, 200, 255};
       }
 
+      const int isCurrentLoc = GetShaderLocation(nodeShader, "isCurrent");
+      const int isPreviousLoc = GetShaderLocation(nodeShader, "isPrevious");
+      const int isNextLoc = GetShaderLocation(nodeShader, "isNext");
+      const int isTargetLoc = GetShaderLocation(nodeShader, "isTarget");
+      const int timeLoc = GetShaderLocation(nodeShader, "time");
+      SetShaderValue(nodeShader, isCurrentLoc, &(int){(int)isCurrent},
+                     SHADER_UNIFORM_INT);
+      SetShaderValue(nodeShader, isPreviousLoc, &(int){(int)isPrevious},
+                     SHADER_UNIFORM_INT);
+      SetShaderValue(nodeShader, isTargetLoc, &(int){(int)node.isTarget},
+                     SHADER_UNIFORM_INT);
+      SetShaderValue(nodeShader, isNextLoc, &(int){(int)isNext},
+                     SHADER_UNIFORM_INT);
+      SetShaderValue(nodeShader, timeLoc, &(float){(float)GetTime()},
+                     SHADER_UNIFORM_FLOAT);
+
+      BeginShaderMode(nodeShader);
+      // DrawRectangleV((Vector2){node.pos.x - maxR, node.pos.y - maxR},
+      //                (Vector2){2 * maxR, 2 * maxR}, nodeColor);
+
+      DrawTexturePro(
+          bgTexture, (Rectangle){0, 0, WIDTH, HEIGHT},
+          (Rectangle){node.pos.x - maxR, node.pos.y - maxR, 2 * maxR, 2 * maxR},
+          (Vector2){0, 0}, 0, nodeColor);
+      EndShaderMode();
+
       Vector2 textPos = Vector2Subtract(
           node.pos,
           Vector2Scale((Vector2){nameLens.items[stateIdx], FONT_SIZE}, 1 / 2.));
-      DrawCircleV(node.pos, maxR, nodeColor);
-      if (isNext) {
-        DrawRing(node.pos, maxR - 4, maxR - 2, 0, 360, 20, GREEN);
-      }
       DrawTextEx(font, state, textPos, FONT_SIZE, 0, BLACK);
 
-      if (node.isTarget) {
-        DrawRing(node.pos, maxR * 1.2, maxR * 1.3, 0, 360, 0, GRAY);
-      }
+      // DrawCircleV(node.pos, maxR, nodeColor);
+      // if (isNext) {
+      //   DrawRing(node.pos, maxR - 4, maxR - 2, 0, 360, 20, GREEN);
+      // }
+      //
+      // if (node.isTarget) {
+      //   DrawRing(node.pos, maxR * 1.2, maxR * 1.3, 0, 360, 0, GRAY);
+      // }
     }
 
     EndMode2D();
@@ -597,8 +650,21 @@ void input() {
 #ifndef PLATFORM_WEB
   // reload shaders
   if (IsKeyPressed(KEY_R)) {
-    UnloadShader(bgShader);
+    Shader prevBgShader = bgShader;
     bgShader = LoadShader(NULL, "./shaders/bg.frag");
+    if (IsShaderValid(bgShader)) {
+      UnloadShader(prevBgShader);
+    } else {
+      bgShader = prevBgShader;
+    }
+
+    Shader prevNodeShader = nodeShader;
+    nodeShader = LoadShader(NULL, "./shaders/node.frag");
+    if (IsShaderValid(nodeShader)) {
+      UnloadShader(prevNodeShader);
+    } else {
+      nodeShader = prevNodeShader;
+    }
   }
 #endif
 
@@ -620,11 +686,6 @@ void input() {
       draggingNode = false;
       mouseOverNode = -1;
     }
-  }
-
-  int k = GetKeyPressed();
-  if (k != 0) {
-    printf("key pressed: %d\n", k);
   }
 
   // move camera
@@ -693,8 +754,8 @@ void input() {
           }
           feedingIdx = strlen(feedingStr) - 1;
         }
-        key = GetCharPressed();
       }
+      key = GetCharPressed();
     }
   }
 
@@ -723,6 +784,7 @@ void closeVis() {
   if (afd != NULL) {
     AFD_free(afd);
   }
+  UnloadShader(nodeShader);
   UnloadTexture(bgTexture);
   UnloadShader(bgShader);
   UnloadFont(font);

@@ -37,3 +37,12 @@ Drag&Drop files to load!\n\
 
 // feeding
 #define FEEDING_DELAY 0.3 // secs
+
+// resources
+#define FONT "./fonts/CodeSquaredRegular-AYRg.ttf"
+#define NODE_SHADER "./shaders/node.frag"
+#ifdef PLATFORM_WEB
+#define BG_SHADER "./shaders/bgweb.frag"
+#else
+#define BG_SHADER "./shaders/bg.frag"
+#endif /* ifdef PLATFORM_WEB */

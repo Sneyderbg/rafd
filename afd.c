@@ -1,5 +1,6 @@
 #include "afd.h"
 #include "utils.h"
+#include <assert.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -136,6 +137,9 @@ void AFD_reset(AFD *afd) {
 }
 
 void AFD_free(AFD *afd) {
+  if (!afd)
+    return;
+
   if (afd->connections != NULL) {
     for (size_t pos = 0; pos < afd->Q.len * afd->Q.len; pos++) {
       if (afd->connections[pos])
