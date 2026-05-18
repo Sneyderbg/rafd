@@ -357,7 +357,7 @@ void draw(float dt) {
           continue;
         }
 
-        Color edgeColor = GRAY;
+        Color edgeColor = LIGHTGRAY;
 
         if (isCurrent) {
           if (feedingIdx < (int)strlen(feedingStr) &&
@@ -392,7 +392,7 @@ void draw(float dt) {
           end = start + 270 - 2 * PADDING_FROM_NODE;
 
           DrawRing(Vector2Add(node.pos, centerOffset), maxR - 2, maxR, start,
-                   end, 20, edgeColor);
+                   end - 4, 20, edgeColor);
           endRad = end * DEG2RAD;
 
           arrowEnd = Vector2Add(node.pos, centerOffset);
@@ -449,7 +449,9 @@ void draw(float dt) {
           start = Vector2Add(start, Vector2Scale(dirPerp, SEP_FACTOR * .5));
           end = Vector2Add(end, Vector2Scale(dirPerp, SEP_FACTOR * .5));
 
-          Vector2 points[] = {start, controlPoint, end};
+          Vector2 points[] = {
+              start, controlPoint,
+              Vector2Subtract(end, Vector2Scale(dir, TRIANGLE_SIZE * .5))};
 
           DrawSplineBezierQuadratic(points, 3, THICKNESS, edgeColor);
 
@@ -478,13 +480,13 @@ void draw(float dt) {
       // draw nodes
       Color nodeColor;
       if (isCurrent && node.isTarget) {
-        nodeColor = GREEN;
+        nodeColor = ColorBrightness(GREEN, .2);
       } else if (isCurrent) {
-        nodeColor = !feedingFinished ? ColorBrightness(RED, 0.6) : RED;
+        nodeColor = !feedingFinished ? ColorBrightness(RED, 0.4) : RED;
       } else if (isPrevious) {
-        nodeColor = ColorBrightness(BLACK, 0.4);
+        nodeColor = WHITE;
       } else {
-        nodeColor = (Color){200, 200, 200, 255};
+        nodeColor = LIGHTGRAY;
       }
 
       const int isCurrentLoc = GetShaderLocation(nodeShader, "isCurrent");
@@ -516,7 +518,9 @@ void draw(float dt) {
       Vector2 textPos = Vector2Subtract(
           node.pos,
           Vector2Scale((Vector2){nameLens.items[stateIdx], FONT_SIZE}, 1 / 2.));
-      DrawTextEx(font, state, textPos, FONT_SIZE, 0, BLACK);
+      DrawTextEx(font, state, Vector2Subtract(textPos, (Vector2){1, 1}),
+                 FONT_SIZE + 2, 0, LIGHTGRAY);
+      DrawTextEx(font, state, textPos, FONT_SIZE, 0, FOREGROUND_COLOR);
 
       // DrawCircleV(node.pos, maxR, nodeColor);
       // if (isNext) {
@@ -645,6 +649,7 @@ void startFeeding() {
 void drawDebug() { DrawFPS(10, 10); }
 #endif
 
+// TODO: support text pasting for definitions
 void input() {
 
 #ifndef PLATFORM_WEB

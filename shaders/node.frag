@@ -48,7 +48,10 @@ void circle() {
     color += border * fragColor * (1. - c);
     if (border >= .6) {
       float shade = lerp(0., 1., length(uv - vec2(1., 0.)));
-      color.xyz = pow(color.xyz, vec3(shade / (1.0 + .2 * abs(sin(time * 3. - 2.4)))));
+      color.rgb = pow(color.rgb, vec3(shade / (1.0 + .2 * abs(sin(time * 3. - 2.4)))));
+    }
+    if (isPrevious) {
+      color.rgb = pow(color.rgb, vec3(c + .1));
     }
   }
 }
@@ -60,5 +63,9 @@ void main() {
   ring();
   circle();
 
-  color.a = pow(color.a, .8);
+  color.a = pow(color.a, 1.2);
+  float postLevels = 4.; // posterization
+  color.rgb *= postLevels;
+  color.rgb = floor(color.rgb);
+  color.rgb /= postLevels;
 }

@@ -4,6 +4,7 @@
 #define FPS 100
 #define PHYSICS_FPS 100
 #define BACKGROUND_COLOR RAYWHITE
+#define FOREGROUND_COLOR BLACK
 #define CAM_ZOOM_FACTOR 1.2
 
 #define HELP_INFO                                                              \
