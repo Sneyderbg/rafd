@@ -138,7 +138,7 @@ void tryLoadFileDropped() {
     }
     fprintf(stderr,
             "   NOTE: if you're using XWayland (X11 under wayland) it's "
-            "probably you're clipboard messing with the dropped files.");
+            "probably your clipboard messing with the dropped files.");
   }
   UnloadDroppedFiles(files);
 }
@@ -261,15 +261,23 @@ void update(float dt) {
     }
   }
 
+  if (liveMode || feeding) {
+    Vector2 followTarget = {0, 0};
+    for (size_t stateIdx = 0; stateIdx < nodes.len; stateIdx++) {
+      if (AFD_isCurrent(afd, nodes.items[stateIdx].state)) {
+        followTarget = Vector2Add(followTarget, nodes.items[stateIdx].pos);
+      }
+      if (AFD_isNext(afd, nodes.items[stateIdx].state,
+                     feedingStr[feedingIdx])) {
+        followTarget = Vector2Add(followTarget, nodes.items[stateIdx].pos);
+      }
+    }
+    followTarget = Vector2Scale(followTarget, .5);
+    camera.target = Vector2Lerp(camera.target, followTarget, .125);
+  }
+
   prevMousePos = mousePos;
-#ifdef PLATFORM_WEB
-  // calculate mousePos based on internal size and actual canvas size
-  mousePos = Vector2Multiply(
-      GetMousePosition(), (Vector2){1. * GetRenderWidth() / INITIAL_WIDTH,
-                                    1. * GetRenderHeight() / INITIAL_HEIGHT});
-#else
   mousePos = GetMousePosition();
-#endif /* ifdef PLATFORM_WEB */
 
   if (CheckCollisionPointRec(
           mousePos, (Rectangle){0, 0, GetScreenWidth(), GetScreenHeight()})) {

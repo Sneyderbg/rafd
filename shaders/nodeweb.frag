@@ -1,9 +1,9 @@
-#version 420
+#version 100
 
-in vec2 fragTexCoord;
-in vec4 fragColor;
+precision mediump float;
 
-out vec4 color;
+varying vec2 fragTexCoord;
+varying vec4 fragColor;
 
 #define uv fragTexCoord
 #define lerp(a, b, x) (a + x*(b - a))
@@ -34,38 +34,38 @@ void ring() {
       r *= smoothstep(ringPos - segLen, ringPos - segLen / 2., a) * smoothstep(ringPos + segLen, ringPos + segLen / 2., a);
     }
 
-    color = r * fragColor;
+    gl_FragColor = r * fragColor;
   }
-  if (color.a < .05) {
-    color.a = 0.;
+  if (gl_FragColor.a < .05) {
+    gl_FragColor.a = 0.;
   }
 }
 
 void circle() {
-  if (color.a <= 0.) {
+  if (gl_FragColor.a <= 0.) {
     float border = smoothstep(.5 - ringWidth, .5 - ringWidth * 1.8, d);
     float c = circ(d / .5);
-    color += border * fragColor * (1. - c);
+    gl_FragColor += border * fragColor * (1. - c);
     if (border >= .6) {
       float shade = lerp(0., 1., length(uv - vec2(1., 0.)));
-      color.rgb = pow(color.rgb, vec3(shade / (1.0 + .2 * abs(sin(time * 3. - 2.4)))));
+      gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(shade / (1.0 + .2 * abs(sin(time * 3. - 2.4)))));
     }
     if (isPrevious && !isCurrent) {
-      color.rgb = pow(color.rgb, vec3(c + .1));
+      gl_FragColor.rgb = pow(gl_FragColor.rgb, vec3(c + .1));
     }
   }
 }
 
 void main() {
   d = length(uv - .5);
-  color = vec4(0.);
+  gl_FragColor = vec4(0.);
 
   ring();
   circle();
 
-  color.a = pow(color.a, 1.2);
-  float postLevels = 4.; // posterization
-  color.rgb *= postLevels;
-  color.rgb = floor(color.rgb);
-  color.rgb /= postLevels;
+  gl_FragColor.a = pow(gl_FragColor.a, 1.2);
+  float postLevels = 4.;
+  gl_FragColor.rgb *= postLevels;
+  gl_FragColor.rgb = floor(gl_FragColor.rgb);
+  gl_FragColor.rgb /= postLevels;
 }

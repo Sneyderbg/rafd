@@ -41,9 +41,10 @@ Drag&Drop files to load!\n\
 
 // resources
 #define FONT "./fonts/CodeSquaredRegular-AYRg.ttf"
-#define NODE_SHADER "./shaders/node.frag"
 #ifdef PLATFORM_WEB
+#define NODE_SHADER "./shaders/nodeweb.frag"
 #define BG_SHADER "./shaders/bgweb.frag"
 #else
+#define NODE_SHADER "./shaders/node.frag"
 #define BG_SHADER "./shaders/bg.frag"
 #endif /* ifdef PLATFORM_WEB */

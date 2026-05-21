@@ -34,7 +34,7 @@ web: $(OBJECTS)
 ifeq (, $(wildcard $(BUILD_DIR)))
 	mkdir $(BUILD_DIR)
 endif
-	emcc $(CFLAGS) -o $(BUILD_DIR)/$(OUT_NAME)$(OUT_EXT) $^ $(LDFLAGS) $(LDLIBS) --shell-file $(RAYLIB_PATH)/src/minshell.html --preload-file fonts --preload-file shaders --preload-file def.afdd
+	$(CC) $(CFLAGS) -o $(BUILD_DIR)/$(OUT_NAME)$(OUT_EXT) $^ $(LDFLAGS) $(LDLIBS) --shell-file $(RAYLIB_PATH)/src/minshell.html --preload-file fonts --preload-file shaders --preload-file def.afdd
 
 %.o: %.c
 	$(CC) $(CFLAGS) $(INCLUDE_DIRS) -c -o $@ $<
