@@ -79,9 +79,14 @@ void showInfoMsg(char *msg, float secs) {
   msgTimer = secs;
 }
 
-bool loadFileDef(char *filename) {
+bool loadDef(char *def, bool isFile) {
   char *error;
-  AFD *newAfd = AFD_parse(filename, ' ', &error);
+  AFD *newAfd;
+  if (isFile) {
+    newAfd = AFD_parseFile(def, ' ', &error);
+  } else {
+    newAfd = AFD_parse(def, ' ', &error);
+  }
 
   if (newAfd == NULL) {
     showErrMsg(error, 6);
@@ -122,7 +127,7 @@ void tryLoadFileDropped() {
   FilePathList files = LoadDroppedFiles();
   bool fileLoaded = false;
   for (size_t i = 0; i < files.count; i++) {
-    if (FileExists(files.paths[i]) && loadFileDef(files.paths[i])) {
+    if (FileExists(files.paths[i]) && loadDef(files.paths[i], true)) {
       showInfoMsg("File definition loaded!", 4);
       fileLoaded = true;
     }
@@ -142,6 +147,16 @@ void tryLoadFileDropped() {
   }
   UnloadDroppedFiles(files);
 }
+
+void tryLoadFromClipboard() {
+  const char *clipboard = GetClipboardText();
+  if (strlen(clipboard) == 0) {
+    showErrMsg("Clipboard empty", 4);
+  }
+
+  loadDef((char *)clipboard, false);
+}
+
 void strJoin(char *chars, char sep) {
   size_t n = strlen(chars);
   inputsJoined.len = 0;
@@ -177,7 +192,7 @@ void init() {
       .target = {0, 0},
       .zoom = 1.};
 
-  bool loaded = loadFileDef("def.afdd");
+  bool loaded = loadDef("def.afdd", true);
   if (!loaded) {
     msgTimer = 6;
   }
@@ -790,6 +805,12 @@ void input() {
   }
   if (IsKeyReleased(KEY_H)) {
     showHelp = false;
+  }
+
+  // paste from clipboard
+  if ((IsKeyDown(KEY_LEFT_CONTROL) || IsKeyDown(KEY_RIGHT_CONTROL)) &&
+      IsKeyPressed(KEY_V)) {
+    tryLoadFromClipboard();
   }
 }
 

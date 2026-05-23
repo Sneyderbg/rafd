@@ -13,7 +13,7 @@ OUT_EXT :=
 
 $(BUILD_DIR)/$(OUT_NAME)$(OUT_EXT): debug
 
-debug: CFLAGS += -g -O0 -DDEBUG
+debug: CFLAGS += -g -O0 -DDEBUG -fsanitize=address
 release: CFLAGS += -O3
 debug release: CFLAGS += -DPLATFORM_DESKTOP
 debug release: $(OBJECTS)

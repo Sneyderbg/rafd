@@ -2,6 +2,7 @@
 #include "utils.h"
 #include <assert.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -157,6 +158,10 @@ void AFD_free(AFD *afd) {
   }
 
   DA_free(afd->F);
+
+  for (size_t i = 0; i < afd->Q.len; i++) {
+    free(afd->Q.items[i]);
+  }
   DA_free(afd->Q);
   DA_free(afd->sigma);
   free(afd);

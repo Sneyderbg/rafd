@@ -1,3 +1,4 @@
+#define _GNU_SOURCE
 #include "afd.h"
 #include "utils.h"
 #include <errno.h>
@@ -6,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <wchar.h>
 
 #define MAX_LINE_LENGTH 1024
 
@@ -36,12 +38,17 @@ bool (*parsingFuncs[5])(void) = {&parseSigma, &parseQ, &parseQ0, &parseF,
 
 typedef struct {
   AFD *parsedAFD;
-  FILE *file;
+  bool fileMode;
   const char *filename;
-  char line[MAX_LINE_LENGTH];
+  char *defStr;
+
+  char *line;
+  char *linePtr;
   size_t lineNumber;
+
   char *token;
   int tokenIdx;
+
   char actualSeps[3];
   bool parsedParams[5];
   char errorMsg[1024];
@@ -52,17 +59,39 @@ PCtx parsingCtx = {0};
 #define cancelParsing()                                                        \
   if (parsingCtx.parsedAFD)                                                    \
     AFD_free(parsingCtx.parsedAFD);                                            \
-  fclose(parsingCtx.file);                                                     \
   if (errorMsg != NULL) {                                                      \
     *errorMsg = parsingCtx.errorMsg;                                           \
   }                                                                            \
   return NULL
 
+char *readFile(const char *filename, char **errorMsg) {
+
+  FILE *file = fopen(filename, "r");
+
+  if (!file) {
+    sprintf(parsingCtx.errorMsg, "%s", strerror(errno));
+    cancelParsing();
+  }
+
+  char *buf = NULL;
+  fseek(file, 0, SEEK_END);
+  size_t fSize = ftell(file);
+  fseek(file, 0, SEEK_SET);
+
+  buf = calloc(sizeof(*buf), fSize + 1); // -_-
+  fread(buf, sizeof(*buf), fSize, file);
+
+  fclose(file);
+  return buf;
+}
+
 bool readLine() {
+
   parsingCtx.tokenIdx = -1;
   parsingCtx.lineNumber++;
-  char *res = fgets(parsingCtx.line, MAX_LINE_LENGTH, parsingCtx.file);
-  return res != NULL;
+  parsingCtx.line = strtok_r(parsingCtx.linePtr ? NULL : parsingCtx.defStr,
+                             "\n\r", &parsingCtx.linePtr);
+  return parsingCtx.line != NULL;
 }
 
 bool readToken() {
@@ -108,7 +137,7 @@ bool parseQ() {
   while (readToken()) {
 
     char *stateToken;
-    stateToken = malloc(strlen(parsingCtx.token) * sizeof(char));
+    stateToken = malloc((strlen(parsingCtx.token) + 1) * sizeof(char));
     strcpy(stateToken, parsingCtx.token);
 
     DA_append(parsingCtx.parsedAFD->Q, stateToken);
@@ -261,16 +290,30 @@ bool parseDelta() {
   return true;
 }
 
-AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
+AFD *AFD_parseFile(const char *filename, const char sep, char **errorMsg) {
   parsingCtx = (PCtx){0}; // reset context
-  parsingCtx.file = fopen(filename, "r");
+  parsingCtx.fileMode = true;
 
-  if (!parsingCtx.file) {
-    sprintf(parsingCtx.errorMsg, "%s", strerror(errno));
-    cancelParsing();
+  char *defStr = readFile(filename, errorMsg);
+  if (!defStr) {
+    return NULL;
   }
-
   parsingCtx.filename = filename;
+
+  AFD *afd = AFD_parse(defStr, sep, errorMsg);
+  parsingCtx.fileMode = false;
+  free(defStr);
+  return afd;
+}
+
+AFD *AFD_parse(char *defStr, const char sep, char **errorMsg) {
+
+  if (!parsingCtx.fileMode) {
+    parsingCtx = (PCtx){0}; // reset context
+  }
+  parsingCtx.defStr = calloc(sizeof(char), strlen(defStr));
+  strncpy(parsingCtx.defStr, defStr, strlen(defStr));
+
   parsingCtx.parsedAFD = calloc(1, sizeof(AFD));
 
   parsingCtx.actualSeps[0] = sep;
@@ -312,6 +355,8 @@ AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
     if (paramToParse != UNKNOWN) {
       bool parsed = parsingFuncs[paramToParse]();
       if (!parsed) {
+
+        free(parsingCtx.defStr);
         cancelParsing();
       }
       parsingCtx.parsedParams[paramToParse] = parsed;
@@ -332,9 +377,10 @@ AFD *AFD_parse(const char *filename, const char sep, char **errorMsg) {
     }
     parsingCtx.errorMsg[strlen(parsingCtx.errorMsg) - 1] =
         '\0'; // erase last comma
+    free(parsingCtx.defStr);
     cancelParsing();
   }
 
-  fclose(parsingCtx.file);
+  free(parsingCtx.defStr);
   return parsingCtx.parsedAFD;
 }
